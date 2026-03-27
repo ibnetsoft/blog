@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title if title is defined else '' }} - 채널 통합 게시</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" type="image/png" href="/static/img/favicon.png">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: { extend: { colors: { primary: '#3B82F6' } } }
+        }
+        if (localStorage.theme === 'light') {
+            document.documentElement.classList.remove('dark');
+        } else {
+            document.documentElement.classList.add('dark');
+        }
+        function toggleTheme() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-100 dark:bg-gray-900 dark:text-gray-100 min-h-screen">
+    <div class="flex">
+        <!-- 사이드바 -->
+        <aside class="w-64 bg-white dark:bg-gray-800 h-screen fixed left-0 top-0 shadow-lg z-40 flex flex-col">
+            <!-- 로고 -->
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
+                <a href="/" class="flex flex-col gap-0.5">
+                    <span class="text-[10px] font-black tracking-widest text-blue-500 uppercase">SNS Studio</span>
+                    <span class="text-base font-bold text-gray-800 dark:text-white">채널 통합 게시</span>
+                </a>
+            </div>
+
+            <!-- 네비게이션 -->
+            <nav class="px-2 py-2 flex-1 overflow-y-auto custom-scrollbar">
+                <ul class="space-y-0.5 text-[11px]">
+                    <li>
+                        <a href="/blog-automation" id="nav-blog"
+                            class="sidebar-item bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border border-blue-500/30 {% if page == 'blog-automation' %}active{% endif %}">
+                            <span class="sidebar-icon">🚀</span>
+                            <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-400 font-bold">{{ t('nav_blog') }}</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/blog-image-gen" id="nav-blog-image"
+                            class="sidebar-item {% if page == 'blog-image-gen' %}active{% endif %}">
+                            <span class="sidebar-icon">🖼️</span>
+                            <span class="font-bold text-gray-700 dark:text-gray-300">{{ t('nav_blog_image') }}</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/logs" id="nav-logs"
+                            class="sidebar-item {% if page == 'logs' %}active{% endif %}">
+                            <span class="sidebar-icon">📋</span>
+                            <span class="font-bold text-gray-700 dark:text-gray-300">{{ t('nav_logs') or '작업로그' }}</span>
+                        </a>
+                    </li>
+                    <li class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+                        <a href="/settings" id="nav-settings"
+                            class="sidebar-item {% if page == 'settings' %}active{% endif %}">
+                            <span class="sidebar-icon">⚙️</span>
+                            <span class="font-bold">{{ t('nav_settings') }}</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+            <!-- 하단 영역 -->
+            <div class="shrink-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
+                <div class="px-3 py-2">
+                    <button onclick="toggleTheme()"
+                        class="w-full flex items-center justify-center gap-2 p-1 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors text-[10px] font-medium">
+                        <span class="dark:hidden">{{ t('theme_light') }}</span>
+                        <span class="hidden dark:inline">{{ t('theme_dark') }}</span>
+                    </button>
+                </div>
+                <!-- API 상태 -->
+                <div class="px-4 pb-3 pt-1">
+                    <div id="apiStatus" class="text-xs text-gray-500 dark:text-gray-400">
+                        <div class="flex items-center gap-2">
+                            <span id="statusDot" class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                            <span id="statusText" class="text-[10px]">{{ t('api_status_checking') }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 메인 컨텐츠 -->
+        <div class="flex-1 ml-64 flex flex-col h-screen overflow-hidden">
+            <main class="flex-1 overflow-y-auto p-6 scroll-smooth">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+
+    <!-- 우상단 언어 선택 -->
+    <div class="fixed top-3 right-6 z-50 flex items-center gap-3">
+        <div class="flex gap-2 bg-white/80 dark:bg-gray-800/80 backdrop-blur p-1 rounded-full shadow-lg border border-gray-200 dark:border-gray-700">
+            <button onclick="changeGlobalLanguage('ko')"
+                class="w-6 h-6 rounded-full overflow-hidden border-2 border-transparent hover:border-indigo-500 transition-all" title="한국어">
+                <img src="https://flagcdn.com/w40/kr.png" alt="Korean" class="w-full h-full object-cover">
+            </button>
+            <button onclick="changeGlobalLanguage('en')"
+                class="w-6 h-6 rounded-full overflow-hidden border-2 border-transparent hover:border-indigo-500 transition-all" title="English">
+                <img src="https://flagcdn.com/w40/gb.png" alt="English" class="w-full h-full object-cover">
+            </button>
+            <button onclick="changeGlobalLanguage('vi')"
+                class="w-6 h-6 rounded-full overflow-hidden border-2 border-transparent hover:border-indigo-500 transition-all" title="Tiếng Việt">
+                <img src="https://flagcdn.com/w40/vn.png" alt="Vietnamese" class="w-full h-full object-cover">
+            </button>
+        </div>
+    </div>
+
+    <!-- 공통 스크립트 -->
+    <script src="/static/js/utils.js?v={{ range(1, 100000) | random }}"></script>
+    <script src="/static/js/api_v2.js?v={{ range(1, 100000) | random }}"></script>
+    {% block scripts %}{% endblock %}
+
+    <script>
+        async function changeGlobalLanguage(lang) {
+            try {
+                const res = await fetch('/api/language', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lang })
+                });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    Utils.showToast('Language changing...', 'success');
+                    setTimeout(() => window.location.reload(), 500);
+                }
+            } catch (e) {
+                Utils.showToast('Failed to switch language', 'error');
+            }
+        }
+
+        async function checkApiStatus() {
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+                const dot = document.getElementById('statusDot');
+                const txt = document.getElementById('statusText');
+                if (data.status === 'ok') {
+                    dot.className = 'w-1.5 h-1.5 rounded-full bg-green-500';
+                    txt.textContent = 'Gemini 연결됨';
+                } else {
+                    dot.className = 'w-1.5 h-1.5 rounded-full bg-yellow-500';
+                    txt.textContent = 'API 미설정';
+                }
+            } catch (e) {
+                document.getElementById('statusDot').className = 'w-1.5 h-1.5 rounded-full bg-red-500';
+                document.getElementById('statusText').textContent = '서버 오류';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkApiStatus();
+        });
+    </script>
+</body>
+</html>

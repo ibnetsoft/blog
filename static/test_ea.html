@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FX 트레이딩 자동매매(EA) 입문 가이드</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Orbitron:wght@400;600;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #04080f; --bg2: #080d18; --bg3: #0d1422;
+      --border: #1a2236; --border2: #243048;
+      --cyan: #00d4ff; --cyan2: #7eeaff;
+      --text: #cdd8f0; --text-muted: #6a7d9e; --text-dim: #354055;
+      --font-sans: 'Noto Sans KR', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-display: 'Orbitron', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 16px; line-height: 1.85; }
+    .hero { position: relative; min-height: 60vh; display: flex; flex-direction: column; justify-content: center; padding: 4rem 2rem; overflow: hidden; }
+    .hero-content { position: relative; z-index: 2; }
+    .hero-title { font-family: var(--font-display); font-size: 3rem; font-weight: 800; color: #fff; }
+    .hero-title .highlight { color: var(--cyan); display: block; }
+    .hero-desc { margin-top: 2rem; max-width: 540px; color: var(--text-muted); }
+    .section { opacity: 0; transform: translateY(30px); transition: opacity 0.7s, transform 0.7s; }
+    .section.visible { opacity: 1; transform: translateY(0); }
+    .section-title { font-size: 1.4rem; font-weight: 700; color: #fff; margin-bottom: 1rem; }
+    .section-body { color: var(--text-muted); }
+    .card { background: var(--bg3); border: 1px solid var(--border); padding: 1.5rem; margin: 0.5rem 0; }
+    .card-title { font-weight: 700; color: var(--text); }
+    .card-desc { font-size: 0.85rem; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+<section class="hero">
+  <div class="hero-content">
+    <h1 class="hero-title">FX 자동매매 <span class="highlight">EA 입문 가이드</span></h1>
+    <p class="hero-desc">잠든 사이에도 내 전략이 시장을 분석하고 주문을 체결합니다.</p>
+  </div>
+</section>
+<main style="max-width:960px;margin:0 auto;padding:2rem;">
+  <section class="section" id="s1">
+    <h2 class="section-title">🤖 EA(Expert Advisor)란 무엇인가</h2>
+    <div class="section-body">
+      <p><strong>Expert Advisor(EA)</strong>는 MetaTrader에서 실행되는 자동 거래 프로그램입니다.</p>
+      <div class="card"><div class="card-title">📊 감정 배제</div><div class="card-desc">공포, 탐욕 없이 규칙 그대로만 실행합니다.</div></div>
+      <div class="card"><div class="card-title">⚡ 고속 실행</div><div class="card-desc">밀리초 단위로 신호를 감지하고 주문합니다.</div></div>
+    </div>
+  </section>
+  <section class="section" id="s2">
+    <h2 class="section-title">🖥️ MT4 vs MT5</h2>
+    <div class="section-body"><p>EA를 시작하기 전 첫 번째 선택은 플랫폼입니다.</p></div>
+  </section>
+</main>
+<script>
+  const sections = document.querySelectorAll('.section');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.08 });
+  sections.forEach(s => io.observe(s));
+</script>
+</body>
+</html>

@@ -1,0 +1,636 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-8 animate-fadeIn">
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                🎨 블로그 비주얼 스튜디오
+                <span class="ml-2 px-2 py-0.5 text-xs bg-amber-500 text-white rounded-full uppercase tracking-widest font-black">Image</span>
+            </h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-1 font-medium">블로그 포스팅에 생동감을 불어넣을 고품질 이미지를 생성하세요.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="generateFromBlog()" class="btn-secondary flex items-center gap-2 px-5 py-2.5 rounded-xl border-dashed">
+                <span>🪄</span>
+                <span class="font-bold">블로그 본문에서 영감 얻기</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <!-- Sidebar: Controls -->
+        <div class="lg:col-span-1 space-y-6">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                <div class="space-y-6">
+                    <!-- Prompt -->
+                    <div>
+                        <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">이미지 묘사 (Prompt)</label>
+                        <textarea id="imagePrompt" class="input-field w-full bg-gray-50/50 dark:bg-gray-900/50 border-gray-100 dark:border-gray-700 h-32 text-sm" placeholder="어떤 이미지를 만들고 싶으신가요? (예: 서재에서 책을 읽는 고양이, 수채화 풍)"></textarea>
+                    </div>
+
+                    <!-- Aspect Ratio -->
+                    <div>
+                        <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">화면 비율</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <label class="cursor-pointer group">
+                                <input type="radio" name="aspectRatio" value="16:9" checked class="hidden peer">
+                                <div class="p-2 border-2 border-transparent bg-gray-50 dark:bg-gray-900 rounded-xl text-center group-hover:border-blue-200 peer-checked:border-blue-500 peer-checked:bg-blue-50/50 transition-all">
+                                    <div class="w-full aspect-video bg-gray-300 dark:bg-gray-700 rounded-md mb-1 mx-auto"></div>
+                                    <span class="text-[10px] font-bold text-gray-500 peer-checked:text-blue-600">16:9</span>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group">
+                                <input type="radio" name="aspectRatio" value="1:1" class="hidden peer">
+                                <div class="p-2 border-2 border-transparent bg-gray-50 dark:bg-gray-900 rounded-xl text-center group-hover:border-blue-200 peer-checked:border-blue-500 peer-checked:bg-blue-50/50 transition-all">
+                                    <div class="w-full aspect-square bg-gray-300 dark:bg-gray-700 rounded-md mb-1 mx-auto"></div>
+                                    <span class="text-[10px] font-bold text-gray-500 peer-checked:text-blue-600">1:1</span>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer group">
+                                <input type="radio" name="aspectRatio" value="4:3" class="hidden peer">
+                                <div class="p-2 border-2 border-transparent bg-gray-50 dark:bg-gray-900 rounded-xl text-center group-hover:border-blue-200 peer-checked:border-blue-500 peer-checked:bg-blue-50/50 transition-all">
+                                    <div class="w-6 aspect-[4/3] bg-gray-300 dark:bg-gray-700 rounded-md mb-1 mx-auto"></div>
+                                    <span class="text-[10px] font-bold text-gray-500 peer-checked:text-blue-600">4:3</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Styles -->
+                    <div>
+                        <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3">추천 스타일</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setStyle('realistic')" class="style-btn active" data-style="realistic">📸 스톡 사진</button>
+                            <button onclick="setStyle('watercolor')" class="style-btn" data-style="watercolor">🎨 수채화</button>
+                            <button onclick="setStyle('3d_render')" class="style-btn" data-style="3d_render">🧊 3D 아이콘</button>
+                            <button onclick="setStyle('vector')" class="style-btn" data-style="vector">🖋️ 벡터 아트</button>
+                            <button onclick="setStyle('clay')" class="style-btn" data-style="clay">🧶 클레이</button>
+                            <button onclick="setStyle('sketch')" class="style-btn" data-style="sketch">✏️ 연필 스케치</button>
+                        </div>
+                    </div>
+
+                    <button id="btnGenerate" onclick="generateImage()" class="btn-primary w-full py-4 rounded-2xl shadow-xl shadow-blue-500/20 flex items-center justify-center gap-2 mt-4">
+                        <span class="text-xl">✨</span>
+                        <span class="font-black text-lg">이미지 생성하기</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Area -->
+        <div class="lg:col-span-3 space-y-6">
+
+            <!-- Google ImageFX 무료 이미지 포착 -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden">
+                <div class="bg-gradient-to-r from-green-500 to-emerald-600 p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">🌐</span>
+                        <div>
+                            <h3 class="text-white font-black text-sm">Google ImageFX 무료 이미지 생성</h3>
+                            <p class="text-green-100 text-[11px]">Flow Bridge 확장프로그램이 생성된 이미지를 자동 포착합니다</p>
+                        </div>
+                        <span id="extStatusBadge" class="text-[10px] px-2 py-1 rounded-full bg-white/20 text-white font-bold">확장 확인중...</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="refreshCapturedImages()" class="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1">
+                            <span>🔄</span> 새로고침
+                        </button>
+                        <a href="https://aitestkitchen.withgoogle.com/tools/image-fx" target="_blank"
+                           class="px-4 py-2 bg-white text-green-700 rounded-xl text-xs font-black hover:bg-green-50 transition-colors flex items-center gap-1">
+                            <span>🎨</span> ImageFX 열기
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 포착된 이미지 그리드 -->
+                <div class="p-4">
+                    <div id="capturedImagesGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3 min-h-[80px]">
+                        <div class="col-span-full py-8 text-center">
+                            <div class="text-3xl mb-2">📡</div>
+                            <p class="text-sm text-gray-500 dark:text-gray-400 font-medium">ImageFX에서 이미지를 생성한 뒤 "새로고침"을 눌러주세요</p>
+                            <p class="text-[10px] text-gray-400 mt-1">클릭하면 블로그 삽입 목록에 추가됩니다</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 선택된 이미지 목록 -->
+                <div id="selectedImagesSection" class="hidden border-t border-green-200 dark:border-green-700 p-4 bg-green-50/50 dark:bg-green-900/20">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-black text-green-700 dark:text-green-300">
+                            블로그에 삽입할 이미지 (<span id="selectedImageCount">0</span>개)
+                        </span>
+                        <button onclick="clearSelectedImages()" class="text-xs text-red-500 hover:text-red-700 font-bold">모두 제거</button>
+                    </div>
+                    <div id="selectedImageList" class="flex gap-3 flex-wrap"></div>
+                </div>
+            </div>
+
+            <!-- API 이미지 생성 (기존) -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden">
+                <div class="bg-gray-50 dark:bg-gray-900/50 p-3 flex items-center justify-between border-b border-gray-100 dark:border-gray-700">
+                    <span class="text-xs font-bold text-gray-500 dark:text-gray-400">API 이미지 생성 (유료)</span>
+                </div>
+                <!-- Loading Grid -->
+                <div id="loadingGrid" class="hidden p-4">
+                     <div class="bg-gray-50 dark:bg-gray-900 rounded-2xl aspect-video animate-pulse flex items-center justify-center">
+                         <div class="text-blue-500 text-5xl animate-spin">🌀</div>
+                     </div>
+                </div>
+                <!-- Results Grid -->
+                <div id="resultsGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+                    <div class="col-span-full py-10 text-center bg-gray-50 dark:bg-gray-900/30 rounded-2xl border-2 border-dashed border-gray-200 dark:border-gray-800">
+                        <div class="text-4xl mb-2">🖼️</div>
+                        <p class="text-sm text-gray-400">왼쪽 설정으로 API 이미지를 생성하거나, 위에서 ImageFX 무료 이미지를 포착하세요</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 블로그 게시 패널 -->
+            <div id="blogPostPanel" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border-2 border-amber-300 dark:border-amber-700 overflow-hidden">
+                <div class="bg-gradient-to-r from-amber-500 to-orange-500 p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">📝</span>
+                        <div>
+                            <h3 class="text-white font-black text-sm">블로그 게시</h3>
+                            <p class="text-amber-100 text-[11px]">선택한 이미지를 블로그 본문에 삽입하여 게시합니다</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-5 space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">제목</label>
+                        <input type="text" id="blogPostTitle" class="input-field w-full text-sm" placeholder="블로그 포스팅 제목">
+                    </div>
+                    <div class="flex gap-3">
+                        <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-blue-400 transition-colors">
+                            <input type="checkbox" id="blogPlatformWP" checked class="rounded border-gray-300 text-blue-600">
+                            <div>
+                                <span class="text-sm font-medium block">워드프레스</span>
+                                <span id="wpBlogName2" class="text-[9px] text-gray-400">한국어 (원본)</span>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer p-2 rounded-lg border border-gray-200 dark:border-gray-600 hover:border-orange-400 transition-colors">
+                            <input type="checkbox" id="blogPlatformBlogger" class="rounded border-gray-300 text-orange-600">
+                            <div>
+                                <span class="text-sm font-medium block">구글 블로그</span>
+                                <span id="bloggerBlogName2" class="text-[9px] text-gray-400">자동 일본어 번역</span>
+                            </div>
+                        </label>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="postToBlog()" id="blogPostBtn"
+                            class="flex-1 py-3 rounded-xl font-black text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg transition-all flex items-center justify-center gap-2">
+                            <span>🚀</span> 블로그에 게시하기
+                        </button>
+                        <button onclick="previewBlogHtml()"
+                            class="py-3 px-5 rounded-xl font-bold text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
+                            미리보기
+                        </button>
+                    </div>
+                    <div id="blogPostResult" class="hidden mt-2 p-3 rounded-lg text-sm"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .style-btn {
+        @apply p-2 rounded-xl border border-gray-100 dark:border-gray-700 text-[11px] font-bold text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 hover:border-blue-500 transition-all;
+    }
+    .style-btn.active {
+        @apply border-blue-500 bg-blue-50/50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400;
+    }
+</style>
+
+<script>
+    let currentStyle = 'realistic';
+    let selectedImages = [];       // 블로그에 삽입할 이미지 URL 목록
+    let capturedImagesList = [];   // 확장프로그램에서 포착된 이미지
+    let flowBridgeReady = false;
+
+    // ========== 확장프로그램 연동 ==========
+    window.addEventListener('message', (event) => {
+        if (event.source !== window) return;
+        if (!event.data || event.data.source !== 'FLOW_BRIDGE_EXT') return;
+
+        const { action, data } = event.data;
+
+        if (action === 'extension_ready') {
+            flowBridgeReady = true;
+            const badge = document.getElementById('extStatusBadge');
+            badge.textContent = '확장 연결됨';
+            badge.className = 'text-[10px] px-2 py-1 rounded-full bg-white/30 text-white font-bold';
+        }
+
+        if (action === 'captured_images_result' && data) {
+            capturedImagesList = data.images || data || [];
+            renderCapturedImages();
+        }
+    });
+
+    setTimeout(() => {
+        if (!flowBridgeReady) {
+            const badge = document.getElementById('extStatusBadge');
+            badge.textContent = '확장 미감지';
+            badge.className = 'text-[10px] px-2 py-1 rounded-full bg-red-500/50 text-white font-bold';
+        }
+    }, 3000);
+
+    function refreshCapturedImages() {
+        const grid = document.getElementById('capturedImagesGrid');
+        grid.innerHTML = '<div class="col-span-full py-6 text-center text-gray-400"><span class="animate-spin inline-block text-2xl">🌀</span><p class="text-xs mt-2">불러오는 중...</p></div>';
+
+        window.postMessage({
+            source: 'FLOW_BRIDGE_PAGE',
+            action: 'get_captured_images',
+            requestId: 'req_' + Date.now()
+        }, '*');
+
+        setTimeout(() => {
+            if (capturedImagesList.length === 0 && grid.querySelector('.animate-spin')) {
+                grid.innerHTML = `<div class="col-span-full py-6 text-center">
+                    <div class="text-2xl mb-1">📭</div>
+                    <p class="text-xs text-gray-400">포착된 이미지가 없습니다</p>
+                    <p class="text-[10px] text-gray-400 mt-1">ImageFX에서 이미지를 생성한 뒤 다시 시도하세요</p>
+                </div>`;
+            }
+        }, 3000);
+    }
+
+    function renderCapturedImages() {
+        const grid = document.getElementById('capturedImagesGrid');
+        if (!capturedImagesList || capturedImagesList.length === 0) {
+            grid.innerHTML = '<div class="col-span-full py-6 text-center text-xs text-gray-400">포착된 이미지가 없습니다</div>';
+            return;
+        }
+
+        grid.innerHTML = '';
+        capturedImagesList.forEach((img, idx) => {
+            const url = typeof img === 'string' ? img : (img.url || img.dataUrl || '');
+            if (!url) return;
+
+            const isSelected = selectedImages.includes(url);
+            const selIdx = selectedImages.indexOf(url);
+            const div = document.createElement('div');
+            div.className = `relative cursor-pointer rounded-xl overflow-hidden border-3 transition-all shadow-md hover:shadow-xl ${isSelected ? 'border-green-500 ring-2 ring-green-300 scale-[0.97]' : 'border-transparent hover:border-blue-300'}`;
+            div.innerHTML = `
+                <img src="${url}" alt="Captured ${idx+1}" class="w-full aspect-square object-cover">
+                ${isSelected
+                    ? `<div class="absolute inset-0 bg-green-500/20"></div>
+                       <div class="absolute top-2 right-2 w-7 h-7 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-black shadow-lg">${selIdx + 1}</div>`
+                    : `<div class="absolute inset-0 bg-black/0 hover:bg-black/10 transition-colors"></div>
+                       <div class="absolute top-2 right-2 w-7 h-7 bg-white/80 rounded-full flex items-center justify-center text-gray-400 text-xs border border-gray-200">+</div>`
+                }
+            `;
+            div.onclick = () => toggleImage(url);
+            grid.appendChild(div);
+        });
+    }
+
+    function toggleImage(url) {
+        const idx = selectedImages.indexOf(url);
+        if (idx >= 0) {
+            selectedImages.splice(idx, 1);
+        } else {
+            selectedImages.push(url);
+        }
+        renderCapturedImages();
+        updateSelectedUI();
+    }
+
+    function updateSelectedUI() {
+        const section = document.getElementById('selectedImagesSection');
+        const list = document.getElementById('selectedImageList');
+        const count = document.getElementById('selectedImageCount');
+
+        count.textContent = selectedImages.length;
+
+        if (selectedImages.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        list.innerHTML = '';
+        selectedImages.forEach((url, i) => {
+            const div = document.createElement('div');
+            div.className = 'relative w-20 h-20 rounded-xl overflow-hidden border-2 border-green-400 group shadow-md';
+            div.innerHTML = `
+                <img src="${url}" class="w-full h-full object-cover">
+                <div class="absolute top-0 left-0 w-6 h-6 bg-green-500 text-white text-[10px] font-black flex items-center justify-center rounded-br-lg">${i+1}</div>
+                <button onclick="event.stopPropagation(); removeImage(${i})" class="absolute top-0 right-0 w-6 h-6 bg-red-500 text-white text-[10px] rounded-bl-lg hidden group-hover:flex items-center justify-center">✕</button>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function removeImage(index) {
+        selectedImages.splice(index, 1);
+        renderCapturedImages();
+        updateSelectedUI();
+    }
+
+    function clearSelectedImages() {
+        selectedImages = [];
+        renderCapturedImages();
+        updateSelectedUI();
+    }
+
+    // ========== API 이미지 생성 (기존) ==========
+    function setStyle(style) {
+        currentStyle = style;
+        document.querySelectorAll('.style-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.style === style);
+        });
+    }
+
+    async function generateFromBlog() {
+        const projectId = (typeof getCurrentProject === 'function') ? getCurrentProject() : null;
+        if (!projectId) {
+            Utils.showToast('프로젝트를 먼저 선택해주세요.', 'warning');
+            return;
+        }
+
+        Utils.showToast('블로그 내용을 분석하여 프롬프트를 제안합니다...', 'info');
+
+        try {
+            const response = await fetch('/api/blog/generate-image-prompt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ project_id: projectId })
+            });
+            const result = await response.json();
+            if (result.status === 'ok') {
+                document.getElementById('imagePrompt').value = result.prompt;
+                Utils.showToast('프롬프트가 생성되었습니다!', 'success');
+            } else {
+                throw new Error(result.error);
+            }
+        } catch (e) {
+            console.error(e);
+            Utils.showToast('분석 실패: ' + e.message, 'error');
+        }
+    }
+
+    async function generateImage() {
+        const prompt = document.getElementById('imagePrompt').value;
+        const aspectRatio = document.querySelector('input[name="aspectRatio"]:checked').value;
+
+        if (!prompt || !prompt.trim()) {
+            Utils.showToast('이미지 묘사를 입력해주세요.', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btnGenerate');
+        const resultsGrid = document.getElementById('resultsGrid');
+        const loadingGrid = document.getElementById('loadingGrid');
+
+        btn.disabled = true;
+        btn.innerHTML = `<span>⏳</span> <span class="font-black">생성 중...</span>`;
+        loadingGrid.classList.remove('hidden');
+
+        try {
+            const response = await fetch('/api/image/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: `${prompt}, blog style, clean composition, ${currentStyle} style`,
+                    aspect_ratio: aspectRatio,
+                    num_images: 1,
+                    project_id: (typeof getCurrentProject === 'function') ? getCurrentProject() : null
+                })
+            });
+
+            const result = await response.json();
+            if (result.status === 'ok' && result.images && result.images.length > 0) {
+                if (resultsGrid.querySelector('.col-span-full')) {
+                    resultsGrid.innerHTML = '';
+                }
+                result.images.forEach(img => {
+                    const card = createResultCard(img);
+                    resultsGrid.prepend(card);
+                });
+                Utils.showToast('이미지가 생성되었습니다!', 'success');
+            } else {
+                throw new Error(result.error || '생성 실패');
+            }
+        } catch (e) {
+            console.error(e);
+            Utils.showToast('오류 발생: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<span class="text-xl">✨</span> <span class="font-black text-lg">이미지 생성하기</span>`;
+            loadingGrid.classList.add('hidden');
+        }
+    }
+
+    function createResultCard(img) {
+        const div = document.createElement('div');
+        div.className = "bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg border border-gray-100 dark:border-gray-700 group animate-fadeIn";
+        div.innerHTML = `
+            <div class="relative aspect-video bg-gray-900 overflow-hidden">
+                <img src="${img.url}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt="Generated">
+                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <button onclick="addApiImageToSelection('${img.url}')" class="p-3 bg-green-500 text-white rounded-full font-bold text-xs hover:scale-110 transition-transform">
+                        ➕ 블로그 삽입
+                    </button>
+                    <a href="${img.url}" download class="p-3 bg-blue-500 text-white rounded-full font-bold text-xs hover:scale-110 transition-transform">
+                        📥 다운로드
+                    </a>
+                </div>
+            </div>
+            <div class="p-3 flex items-center justify-between">
+                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">API Generated</span>
+                <button onclick="this.closest('.group').remove()" class="text-gray-400 hover:text-red-500 text-xs">삭제</button>
+            </div>
+        `;
+        return div;
+    }
+
+    function addApiImageToSelection(url) {
+        if (!selectedImages.includes(url)) {
+            selectedImages.push(url);
+            updateSelectedUI();
+            Utils.showToast('블로그 삽입 목록에 추가되었습니다.', 'success');
+        } else {
+            Utils.showToast('이미 추가된 이미지입니다.', 'info');
+        }
+    }
+
+    // 플랫폼별 자동 번역 언어
+    const platformAutoLang = {
+        wordpress: null,       // 원본 그대로
+        blogger: 'ja'          // 일본어 자동 번역
+    };
+
+    // ========== 블로그 게시 ==========
+    function previewBlogHtml() {
+        const html = buildBlogHtml();
+        const title = document.getElementById('blogPostTitle').value || '미리보기';
+        const win = window.open('', '_blank', 'width=800,height=600');
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${title}</title>
+            <style>body{font-family:'Noto Sans KR',sans-serif;max-width:720px;margin:40px auto;padding:0 20px;line-height:1.8;color:#333;}
+            img{max-width:100%;border-radius:8px;margin:16px 0;}h1{border-bottom:2px solid #eee;padding-bottom:12px;}</style>
+            </head><body><h1>${title}</h1>${html}</body></html>`);
+    }
+
+    function buildBlogHtml() {
+        // 프로젝트 대본이 있으면 대본+이미지, 없으면 이미지만
+        let html = '';
+
+        if (selectedImages.length === 0) {
+            return '<p>삽입할 이미지가 없습니다. 이미지를 선택해주세요.</p>';
+        }
+
+        // 이미지를 중심으로 HTML 구성
+        selectedImages.forEach((url, i) => {
+            html += `<figure style="text-align:center;margin:24px 0;">
+                <img src="${url}" alt="Image ${i+1}" style="max-width:100%;border-radius:8px;">
+            </figure>\n`;
+        });
+
+        return html;
+    }
+
+    async function postToBlog() {
+        const platforms = [];
+        if (document.getElementById('blogPlatformWP').checked) platforms.push('wordpress');
+        if (document.getElementById('blogPlatformBlogger').checked) platforms.push('blogger');
+
+        if (platforms.length === 0) {
+            Utils.showToast('게시할 플랫폼을 선택해주세요.', 'warning');
+            return;
+        }
+
+        if (selectedImages.length === 0) {
+            Utils.showToast('삽입할 이미지를 선택해주세요.', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('blogPostBtn');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="animate-spin inline-block">⏳</span> 게시 중...';
+
+        // 프로젝트 대본 가져오기
+        const projectId = (typeof getCurrentProject === 'function') ? getCurrentProject() : null;
+        let scriptContent = '';
+        try {
+            if (projectId) {
+                const fullData = await API.project.getFull(projectId);
+                if (fullData?.script?.full_script) {
+                    scriptContent = fullData.script.full_script;
+                }
+            }
+        } catch(e) { console.error(e); }
+
+        // HTML 빌드
+        let baseHtml = '';
+        if (scriptContent) {
+            const paragraphs = scriptContent.split(/\n\s*\n/).filter(p => p.trim());
+            const interval = Math.max(1, Math.floor(paragraphs.length / selectedImages.length));
+            let imgIdx = 0;
+            for (let i = 0; i < paragraphs.length; i++) {
+                if (imgIdx < selectedImages.length && i > 0 && i % interval === 0) {
+                    baseHtml += `<figure style="text-align:center;margin:24px 0;"><img src="${selectedImages[imgIdx]}" alt="" style="max-width:100%;border-radius:8px;"></figure>\n`;
+                    imgIdx++;
+                }
+                baseHtml += `<p>${paragraphs[i].trim().replace(/\n/g, '<br>')}</p>\n`;
+            }
+            while (imgIdx < selectedImages.length) {
+                baseHtml += `<figure style="text-align:center;margin:24px 0;"><img src="${selectedImages[imgIdx]}" alt="" style="max-width:100%;border-radius:8px;"></figure>\n`;
+                imgIdx++;
+            }
+        } else {
+            baseHtml = buildBlogHtml();
+        }
+
+        let baseTitle = document.getElementById('blogPostTitle').value.trim() || '블로그 포스팅';
+        const resultDiv = document.getElementById('blogPostResult');
+        let urls = [];
+        let messages = [];
+
+        try {
+            for (const platform of platforms) {
+                const targetLang = platformAutoLang[platform];
+                let postTitle = baseTitle;
+                let postContent = baseHtml;
+
+                // 자동 번역
+                if (targetLang) {
+                    const langName = {ja:'일본어', en:'영어', vi:'베트남어'}[targetLang] || targetLang;
+                    btn.innerHTML = `<span class="animate-spin inline-block">⏳</span> ${langName} 번역 중...`;
+
+                    try {
+                        const transRes = await fetch('/api/blog/translate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title: postTitle, content: postContent, target_language: targetLang })
+                        });
+                        const transResult = await transRes.json();
+                        if (transResult.status === 'ok') {
+                            postTitle = transResult.title || postTitle;
+                            postContent = transResult.content || postContent;
+                        } else {
+                            messages.push(`구글 블로그: 번역 실패`);
+                            continue;
+                        }
+                    } catch(e) {
+                        messages.push(`구글 블로그: 번역 오류`);
+                        continue;
+                    }
+                }
+
+                const pName = platform === 'wordpress' ? '워드프레스' : '구글 블로그';
+                btn.innerHTML = `<span class="animate-spin inline-block">⏳</span> ${pName} 게시 중...`;
+
+                const response = await fetch('/api/blog/post', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: postTitle, content: postContent, tags: [], platforms: [platform] })
+                });
+                const result = await response.json();
+                const pRes = (result.results || {})[platform];
+                if (pRes?.status === 'ok' && pRes.url) {
+                    urls.push(`<a href="${pRes.url}" target="_blank" class="underline text-blue-500 font-bold">${pName} 보기</a>`);
+                } else {
+                    messages.push(`${pName}: ${pRes?.error || '실패'}`);
+                }
+            }
+
+            resultDiv.classList.remove('hidden');
+            if (urls.length > 0) {
+                resultDiv.className = 'mt-2 p-3 rounded-lg text-sm bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-700';
+                resultDiv.innerHTML = `<strong>게시 완료!</strong> ${urls.join(' | ')}` + (messages.length ? `<br><span class="text-red-500">${messages.join(', ')}</span>` : '');
+                Utils.showToast('블로그 게시 완료!', 'success');
+            } else {
+                resultDiv.className = 'mt-2 p-3 rounded-lg text-sm bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-700';
+                resultDiv.innerHTML = messages.join(', ');
+                Utils.showToast('게시 실패', 'error');
+            }
+        } catch (error) {
+            console.error(error);
+            Utils.showToast('블로그 게시 실패: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+
+    // ========== 초기화 ==========
+    document.addEventListener('DOMContentLoaded', () => {
+        // 프로젝트 제목 자동 채우기
+        const projectId = (typeof getCurrentProject === 'function') ? getCurrentProject() : null;
+        if (projectId) {
+            API.project.getFull(projectId).then(data => {
+                if (data?.project?.topic) {
+                    document.getElementById('blogPostTitle').value = data.project.topic;
+                }
+            }).catch(() => {});
+        }
+    });
+</script>
+{% endblock %}

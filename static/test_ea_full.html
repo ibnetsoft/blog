@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FX 트레이딩 자동매매(EA) 입문 가이드 | Expert Advisor 완전 정복</title>
+  <meta name="description" content="MT4/MT5 Expert Advisor(EA) 자동매매 입문 가이드." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=Orbitron:wght@400;600;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #04080f; --bg2: #080d18; --bg3: #0d1422;
+      --border: #1a2236; --border2: #243048;
+      --cyan: #00d4ff; --cyan2: #7eeaff;
+      --cyan-dim: rgba(0,212,255,0.08); --cyan-glow: rgba(0,212,255,0.25);
+      --green: #00ff87; --red: #ff4466; --yellow: #ffd166;
+      --text: #cdd8f0; --text-muted: #6a7d9e; --text-dim: #354055;
+      --font-sans: 'Noto Sans KR', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-display: 'Orbitron', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg); color: var(--text); font-family: var(--font-sans);
+      font-size: 16px; line-height: 1.85; -webkit-font-smoothing: antialiased; overflow-x: hidden;
+    }
+    body::after {
+      content: ''; position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.012) 2px, rgba(0,212,255,0.012) 4px);
+      pointer-events: none; z-index: 9999;
+    }
+    .hero { position: relative; min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: clamp(4rem, 10vh, 8rem) clamp(1.5rem, 8vw, 10rem); overflow: hidden; }
+    .hero-circuit { position: absolute; inset: 0; background-image: linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px); background-size: 100px 100px, 100px 100px; mask-image: radial-gradient(ellipse 90% 80% at 30% 50%, black 20%, transparent 80%); }
+    .hero-chart { position: absolute; right: 0; top: 0; bottom: 0; width: 55%; opacity: 0.15; }
+    .hero-glow-left { position: absolute; left: -200px; top: 50%; transform: translateY(-50%); width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(0,212,255,0.15) 0%, transparent 70%); filter: blur(40px); }
+    .hero-content { position: relative; z-index: 2; }
+    .hero-eyebrow { font-family: var(--font-mono); font-size: 0.72rem; color: var(--cyan); letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 2rem; display: flex; align-items: center; gap: 1rem; }
+    .hero-eyebrow::before { content: ''; width: 40px; height: 1px; background: var(--cyan); display: block; }
+    .hero-title { font-family: var(--font-display); font-size: clamp(2.5rem, 7vw, 6rem); line-height: 1.05; letter-spacing: 0.03em; font-weight: 800; color: #fff; text-shadow: 0 0 60px rgba(0,212,255,0.3); }
+    .hero-title .highlight { color: var(--cyan); display: block; -webkit-text-stroke: 1px var(--cyan); }
+    .hero-desc { margin-top: 2rem; max-width: 540px; font-size: 1.05rem; color: var(--text-muted); line-height: 1.9; }
+    .hero-stats { display: flex; gap: 3rem; margin-top: 3rem; }
+    .stat-num { font-family: var(--font-display); font-size: 2rem; font-weight: 600; color: var(--cyan); line-height: 1; text-shadow: 0 0 20px var(--cyan-glow); }
+    .stat-label { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 0.3rem; }
+    main { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; padding: 0 clamp(1.5rem, 5vw, 3rem) 8rem; }
+    .toc { border: 1px solid var(--border2); background: var(--bg2); padding: 2rem 2.5rem; margin-bottom: 5rem; position: relative; overflow: hidden; }
+    .toc::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--cyan), var(--green), var(--cyan)); }
+    .toc-title { font-family: var(--font-mono); font-size: 0.72rem; color: var(--cyan); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 1.2rem; }
+    .toc-list { list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .toc-list li a { font-family: var(--font-mono); font-size: 0.82rem; color: var(--text-muted); text-decoration: none; display: flex; align-items: center; gap: 0.7rem; }
+    .toc-list li a::before { content: attr(data-num); color: var(--cyan); opacity: 0.5; font-size: 0.68rem; }
+    .section { margin-bottom: 5rem; opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .section.visible { opacity: 1; transform: translateY(0); }
+    .section-header { display: flex; align-items: flex-start; gap: 1.5rem; margin-bottom: 2rem; }
+    .section-num-badge { font-family: var(--font-display); font-size: 3.5rem; font-weight: 800; color: transparent; -webkit-text-stroke: 1px rgba(0,212,255,0.3); line-height: 1; flex-shrink: 0; }
+    .section-tag { font-family: var(--font-mono); font-size: 0.68rem; color: var(--cyan); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 0.3rem; }
+    .section-title { font-size: clamp(1.25rem, 2.5vw, 1.6rem); font-weight: 700; color: #fff; line-height: 1.4; }
+    .section-body { font-size: 0.97rem; color: var(--text-muted); line-height: 1.95; }
+    .section-body p { margin-bottom: 1rem; }
+    .section-body strong { color: var(--text); }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .card { background: var(--bg3); border: 1px solid var(--border); padding: 1.5rem; position: relative; overflow: hidden; }
+    .card-icon { font-size: 1.5rem; margin-bottom: 0.8rem; }
+    .card-title { font-weight: 700; color: var(--text); font-size: 0.95rem; margin-bottom: 0.5rem; }
+    .card-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.75; }
+    .callout { display: flex; gap: 1rem; padding: 1.2rem 1.5rem; margin: 1.5rem 0; }
+    .callout-warn { background: rgba(255,209,102,0.05); border: 1px solid rgba(255,209,102,0.25); }
+    .callout-info { background: rgba(0,212,255,0.05); border: 1px solid rgba(0,212,255,0.2); }
+    .callout-danger { background: rgba(255,68,102,0.05); border: 1px solid rgba(255,68,102,0.25); }
+    .callout-ok { background: rgba(0,255,135,0.05); border: 1px solid rgba(0,255,135,0.2); }
+    .callout-icon { font-size: 1rem; line-height: 1.8; flex-shrink: 0; }
+    .callout-text { font-size: 0.9rem; color: var(--text-muted); line-height: 1.85; }
+    .callout-text strong { color: var(--text); }
+    .divider { border: none; height: 1px; background: linear-gradient(90deg, transparent, var(--border2), transparent); margin: 4rem 0; }
+    .conclusion { border-top: 1px solid var(--border2); padding-top: 3rem; margin-top: 1rem; }
+    .conclusion h2 { font-family: var(--font-display); font-size: 1.4rem; color: var(--text); margin-bottom: 1.5rem; }
+    .conclusion p { font-size: 0.97rem; color: var(--text-muted); line-height: 1.95; margin-bottom: 1rem; }
+    footer { position: relative; z-index: 1; border-top: 1px solid var(--border); text-align: center; padding: 2rem; font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-dim); }
+  </style>
+</head>
+<body>
+<section class="hero">
+  <div class="hero-circuit"></div>
+  <div class="hero-glow-left"></div>
+  <svg class="hero-chart" viewBox="0 0 500 300" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="0,250 40,220 80,230 120,180 160,190 200,140 240,155 280,100 320,115 360,80 400,90 440,50 500,60" fill="none" stroke="#00d4ff" stroke-width="2" opacity="0.6"/>
+  </svg>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Expert Advisor · 자동매매 완전 입문</div>
+    <h1 class="hero-title">FX 자동매매 <span class="highlight">EA 입문 가이드</span></h1>
+    <p class="hero-desc">잠든 사이에도 내 전략이 시장을 분석하고 주문을 체결합니다.</p>
+    <div class="hero-stats">
+      <div class="stat-item"><div class="stat-num">24/5</div><div class="stat-label">무중단 자동 거래</div></div>
+      <div class="stat-item"><div class="stat-num">MT4/5</div><div class="stat-label">지원 플랫폼</div></div>
+    </div>
+  </div>
+</section>
+<main>
+  <nav class="toc">
+    <div class="toc-title">// 목차</div>
+    <ul class="toc-list">
+      <li><a href="#s1" data-num="01">EA란 무엇인가</a></li>
+      <li><a href="#s2" data-num="02">MT4 vs MT5 선택</a></li>
+    </ul>
+  </nav>
+  <section class="section" id="s1">
+    <div class="section-header">
+      <div class="section-num-badge">01</div>
+      <div class="section-head-text">
+        <div class="section-tag">// What is EA</div>
+        <h2 class="section-title">🤖 EA(Expert Advisor)란 무엇인가</h2>
+      </div>
+    </div>
+    <div class="section-body">
+      <p><strong>Expert Advisor(EA)</strong>는 MetaTrader 플랫폼에서 실행되는 자동 거래 프로그램입니다.</p>
+      <div class="card-grid">
+        <div class="card"><div class="card-icon">📊</div><div class="card-title">감정 배제</div><div class="card-desc">규칙 그대로 실행합니다.</div></div>
+        <div class="card"><div class="card-icon">⚡</div><div class="card-title">고속 실행</div><div class="card-desc">밀리초 단위로 주문합니다.</div></div>
+      </div>
+      <div class="callout callout-warn"><div class="callout-icon">⚠️</div><div class="callout-text"><strong>주의:</strong> EA는 도구일 뿐입니다.</div></div>
+    </div>
+  </section>
+  <hr class="divider">
+  <section class="section" id="s2">
+    <div class="section-header">
+      <div class="section-num-badge">02</div>
+      <div class="section-head-text">
+        <div class="section-tag">// Platform Selection</div>
+        <h2 class="section-title">🖥️ MT4 vs MT5</h2>
+      </div>
+    </div>
+    <div class="section-body"><p>EA를 시작하기 전 플랫폼을 선택하세요.</p></div>
+  </section>
+  <div class="conclusion">
+    <h2>// SUMMARY</h2>
+    <p>EA 자동매매는 감정 없는 일관된 전략 실행이 장점입니다.</p>
+  </div>
+</main>
+<footer>© 2025 FX EA 가이드</footer>
+<script>
+  const sections = document.querySelectorAll('.section');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.08 });
+  sections.forEach(s => io.observe(s));
+</script>
+</body>
+</html>

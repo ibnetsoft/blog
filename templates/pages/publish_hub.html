@@ -1,0 +1,827 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6 animate-fadeIn">
+    <!-- Header -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                {{ t('publish_hub_title') }}
+                <span class="ml-2 px-2 py-0.5 text-xs bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full uppercase tracking-widest font-black">ONE SOURCE</span>
+            </h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-1 font-medium">{{ t('publish_hub_desc') }}</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="showSessionList()" class="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                {{ t('btn_my_session_list') }}
+            </button>
+            <button onclick="createNewSession()" class="btn-primary flex items-center gap-2 px-6 py-2.5 rounded-xl shadow-lg shadow-blue-500/20">
+                <span class="text-lg">+</span>
+                <span class="font-bold">{{ t('btn_new_publish') }}</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Step Progress Bar -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-xl border border-gray-100 dark:border-gray-700/50">
+        <div class="flex items-center justify-between">
+            <div class="step-item flex-1 text-center cursor-pointer" data-step="script" onclick="goToStep('script')">
+                <div id="stepIcon_script" class="w-10 h-10 mx-auto rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm mb-1">1</div>
+                <span class="text-xs font-bold text-blue-600 dark:text-blue-400">{{ t('step_script_write') }}</span>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-200 dark:bg-gray-700 relative top-[-10px]"><div id="stepLine_1" class="h-full bg-blue-500 transition-all" style="width:0%"></div></div>
+            <div class="step-item flex-1 text-center cursor-pointer" data-step="images" onclick="goToStep('images')">
+                <div id="stepIcon_images" class="w-10 h-10 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 flex items-center justify-center font-bold text-sm mb-1">2</div>
+                <span class="text-xs font-bold text-gray-400">{{ t('step_image_gen') }}</span>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-200 dark:bg-gray-700 relative top-[-10px]"><div id="stepLine_2" class="h-full bg-blue-500 transition-all" style="width:0%"></div></div>
+            <div class="step-item flex-1 text-center cursor-pointer" data-step="blog" onclick="goToStep('blog')">
+                <div id="stepIcon_blog" class="w-10 h-10 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 flex items-center justify-center font-bold text-sm mb-1">3</div>
+                <span class="text-xs font-bold text-gray-400">{{ t('step_blog_post') }}</span>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-200 dark:bg-gray-700 relative top-[-10px]"><div id="stepLine_3" class="h-full bg-blue-500 transition-all" style="width:0%"></div></div>
+            <div class="step-item flex-1 text-center cursor-pointer" data-step="video" onclick="goToStep('video')">
+                <div id="stepIcon_video" class="w-10 h-10 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 flex items-center justify-center font-bold text-sm mb-1">4</div>
+                <span class="text-xs font-bold text-gray-400">{{ t('step_video_prod') }}</span>
+            </div>
+            <div class="flex-1 h-0.5 bg-gray-200 dark:bg-gray-700 relative top-[-10px]"><div id="stepLine_4" class="h-full bg-blue-500 transition-all" style="width:0%"></div></div>
+            <div class="step-item flex-1 text-center cursor-pointer" data-step="youtube" onclick="goToStep('youtube')">
+                <div id="stepIcon_youtube" class="w-10 h-10 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 flex items-center justify-center font-bold text-sm mb-1">5</div>
+                <span class="text-xs font-bold text-gray-400">{{ t('step_youtube_upload') }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== STEP 1: 글 작성 ===== -->
+    <div id="panel_script" class="step-panel">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 왼쪽: 프로젝트 불러오기 -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="p-2 bg-indigo-500/10 text-indigo-500 rounded-lg text-lg">📂</span>
+                    <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_from_existing_project') }}</h2>
+                </div>
+                <select id="projectSelect" class="input-field w-full mb-3" onchange="onProjectSelect()">
+                    <option value="">{{ t('option_select_project') }}</option>
+                </select>
+                <button onclick="loadFromProject()" class="w-full py-2 bg-indigo-500 text-white rounded-xl font-bold hover:bg-indigo-600 transition-colors">{{ t('btn_load_script') }}</button>
+            </div>
+
+            <!-- 오른쪽: 직접 입력 -->
+            <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="p-2 bg-blue-500/10 text-blue-500 rounded-lg text-lg">✏️</span>
+                    <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_content_write') }}</h2>
+                </div>
+                <input id="sessionTitle" type="text" class="input-field w-full mb-3" placeholder="{{ t('placeholder_enter_title') }}">
+                <textarea id="sessionContent" class="input-field w-full h-64 resize-y" placeholder="{{ t('placeholder_session_content') }}"></textarea>
+                <div class="flex items-center justify-between mt-4">
+                    <span id="charCount" class="text-xs text-gray-400">0{{ t('char_unit') }}</span>
+                    <button onclick="saveAndGoToImages()" class="btn-primary px-6 py-2.5 rounded-xl font-bold">{{ t('btn_next_image_gen') }} →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== STEP 2: 이미지 생성 ===== -->
+    <div id="panel_images" class="step-panel hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 왼쪽: 이미지 포인트 리스트 -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="p-2 bg-green-500/10 text-green-500 rounded-lg text-lg">🖼️</span>
+                        <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_image_prompts') }}</h2>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="analyzeImagePoints()" class="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600 transition-colors">{{ t('btn_ai_analyze') }}</button>
+                        <button onclick="addImageSlot()" class="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 rounded-lg text-xs font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">+ {{ t('btn_add') }}</button>
+                    </div>
+                </div>
+                <div id="imagePointsList" class="space-y-4 max-h-[600px] overflow-y-auto">
+                    <p class="text-gray-400 text-center py-8">{{ t('status_run_image_analysis') }}</p>
+                </div>
+            </div>
+
+            <!-- 오른쪽: 프롬프트 복사 영역 (Flow 확장프로그램용) -->
+            <div class="space-y-6">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="p-2 bg-orange-500/10 text-orange-500 rounded-lg text-lg">🔗</span>
+                        <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_google_flow_link') }}</h2>
+                    </div>
+                    <p class="text-sm text-gray-500 mb-3">{{ t('google_flow_hint') }}</p>
+                    <div id="selectedPromptArea" class="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 min-h-[100px]">
+                        <p class="text-gray-400 text-sm">{{ t('select_image_prompt_hint') }}</p>
+                    </div>
+                    <div class="flex gap-2 mt-3">
+                        <button id="btnCopyPrompt" onclick="copySelectedPrompt()" class="flex-1 py-2 bg-orange-500 text-white rounded-xl font-bold hover:bg-orange-600 transition-colors" disabled>{{ t('btn_copy_prompt') }}</button>
+                        <button onclick="openGoogleFlow()" class="flex-1 py-2 bg-gray-200 dark:bg-gray-700 rounded-xl font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">{{ t('btn_open_flow') }}</button>
+                    </div>
+                </div>
+
+                <!-- 이미지 URL 수동 입력 -->
+                <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="p-2 bg-purple-500/10 text-purple-500 rounded-lg text-lg">📎</span>
+                        <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_image_registration') }}</h2>
+                    </div>
+                    <p class="text-sm text-gray-500 mb-3">{{ t('image_reg_hint') }}</p>
+                    <!-- URL 입력 -->
+                    <div class="flex gap-2 mb-3">
+                        <input id="manualImageUrl" type="text" class="input-field flex-1" placeholder="{{ t('placeholder_paste_image_url') }}">
+                        <button onclick="applyManualImage()" class="px-4 py-2 bg-purple-500 text-white rounded-xl font-bold hover:bg-purple-600 transition-colors">{{ t('btn_apply') }}</button>
+                    </div>
+                    <!-- 파일 업로드 -->
+                    <div class="flex gap-2">
+                        <label class="flex-1 flex items-center justify-center gap-2 py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer hover:border-purple-400 transition-colors">
+                            <span class="text-sm text-gray-500">📁 {{ t('btn_select_file') }}</span>
+                            <input id="imageFileInput" type="file" accept="image/*" class="hidden" onchange="uploadImageFile(this)">
+                        </label>
+                    </div>
+                    <div class="mt-4 flex justify-between">
+                        <span id="imageProgress" class="text-xs text-gray-400">{{ t('status_images') }}: 0/0</span>
+                        <button onclick="goToStep('blog')" class="btn-primary px-6 py-2 rounded-xl font-bold text-sm">{{ t('btn_next_blog_post') }} →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== STEP 3: 블로그 게시 ===== -->
+    <div id="panel_blog" class="step-panel hidden">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- 미리보기 -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="p-2 bg-blue-500/10 text-blue-500 rounded-lg text-lg">👁️</span>
+                        <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_blog_preview') }}</h2>
+                    </div>
+                    <button onclick="buildHtml()" class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors">{{ t('btn_gen_html') }}</button>
+                </div>
+                <div id="blogPreview" class="prose dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900 rounded-xl p-6 min-h-[400px] max-h-[600px] overflow-y-auto">
+                    <p class="text-gray-400">{{ t('status_gen_html_preview_hint') }}</p>
+                </div>
+            </div>
+
+            <!-- 게시 설정 -->
+            <div class="space-y-6">
+                <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="p-2 bg-green-500/10 text-green-500 rounded-lg text-lg">🚀</span>
+                        <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_blog_posting') }}</h2>
+                    </div>
+
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all border-blue-500 bg-blue-50/50 dark:bg-blue-500/10">
+                            <input type="checkbox" id="chkWordpress" checked class="w-4 h-4 accent-blue-500">
+                            <span class="text-2xl">🇼</span>
+                            <span class="font-bold text-sm">WordPress</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all border-orange-500 bg-orange-50/50 dark:bg-orange-500/10">
+                            <input type="checkbox" id="chkBlogger" checked class="w-4 h-4 accent-orange-500">
+                            <span class="text-2xl">📝</span>
+                            <span class="font-bold text-sm">Google Blogger</span>
+                        </label>
+                    </div>
+
+                    <div class="mt-4">
+                        <label class="block text-xs font-bold text-gray-400 uppercase mb-2">{{ t('label_tags_hint') }}</label>
+                        <input id="blogTags" type="text" class="input-field w-full" placeholder="{{ t('placeholder_tags') }}">
+                    </div>
+
+                    <button onclick="uploadImagesToWP()" id="btnUploadWP" class="w-full mt-4 py-2 bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-sm hover:bg-blue-200 transition-colors">
+                        {{ t('btn_upload_images_to_wp') }}
+                    </button>
+                    <span id="wpUploadStatus" class="text-xs text-gray-400 block mt-1"></span>
+
+                    <button onclick="postToBlogs()" class="w-full mt-3 py-3 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-xl font-bold text-lg hover:from-blue-600 hover:to-green-600 transition-all shadow-lg">
+                        {{ t('btn_post_to_blog') }}
+                    </button>
+                </div>
+
+                <!-- 게시 결과 -->
+                <div id="blogResults" class="hidden bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                    <h3 class="font-bold text-gray-800 dark:text-white mb-3">{{ t('label_posting_results') }}</h3>
+                    <div id="blogResultContent"></div>
+                    <button onclick="goToStep('video')" class="w-full mt-4 py-2 bg-purple-500 text-white rounded-xl font-bold hover:bg-purple-600 transition-colors">{{ t('btn_next_video_prod') }} →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== STEP 4: 영상 제작 ===== -->
+    <div id="panel_video" class="step-panel hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+            <div class="flex items-center gap-2 mb-4">
+                <span class="p-2 bg-purple-500/10 text-purple-500 rounded-lg text-lg">🎬</span>
+                <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_video_production') }}</h2>
+            </div>
+            <p class="text-gray-500 mb-6">{{ t('video_prod_desc') }}</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 text-center">
+                    <div class="text-3xl mb-2">🖼️</div>
+                    <div class="font-bold text-sm">{{ t('label_img_to_video') }}</div>
+                    <p class="text-xs text-gray-400 mt-1">{{ t('img_to_video_desc') }}</p>
+                    <span id="videoStepImg" class="inline-block mt-2 px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs font-bold">{{ t('status_waiting') }}</span>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 text-center">
+                    <div class="text-3xl mb-2">🎙️</div>
+                    <div class="font-bold text-sm">{{ t('label_tts_narration') }}</div>
+                    <p class="text-xs text-gray-400 mt-1">{{ t('tts_narration_desc') }}</p>
+                    <span id="videoStepTts" class="inline-block mt-2 px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs font-bold">{{ t('status_waiting') }}</span>
+                </div>
+                <div class="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 text-center">
+                    <div class="text-3xl mb-2">🎞️</div>
+                    <div class="font-bold text-sm">{{ t('label_final_assembly') }}</div>
+                    <p class="text-xs text-gray-400 mt-1">{{ t('final_assembly_desc') }}</p>
+                    <span id="videoStepRender" class="inline-block mt-2 px-2 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-xs font-bold">{{ t('status_waiting') }}</span>
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="startVideoProduction()" class="flex-1 py-3 bg-purple-500 text-white rounded-xl font-bold hover:bg-purple-600 transition-colors">
+                    {{ t('btn_start_video_prod_hint') }}
+                </button>
+                <button onclick="goToStep('youtube')" class="px-6 py-3 bg-gray-200 dark:bg-gray-700 rounded-xl font-bold hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    {{ t('btn_skip') }} →
+                </button>
+            </div>
+
+            <p class="text-xs text-gray-400 mt-3 text-center">{{ t('video_prod_pipeline_hint') }}</p>
+        </div>
+    </div>
+
+    <!-- ===== STEP 5: 유튜브 업로드 ===== -->
+    <div id="panel_youtube" class="step-panel hidden">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+            <div class="flex items-center gap-2 mb-4">
+                <span class="p-2 bg-red-500/10 text-red-500 rounded-lg text-lg">▶️</span>
+                <h2 class="text-lg font-bold text-gray-800 dark:text-white">{{ t('label_youtube_upload') }}</h2>
+            </div>
+            <p class="text-gray-500 mb-6">{{ t('youtube_upload_desc') }}</p>
+
+            <div id="publishSummary" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-4">
+                    <div class="font-bold text-blue-600 dark:text-blue-400 mb-1">WordPress</div>
+                    <span id="summaryWp" class="text-sm text-gray-600 dark:text-gray-400">-</span>
+                </div>
+                <div class="bg-orange-50 dark:bg-orange-500/10 rounded-xl p-4">
+                    <div class="font-bold text-orange-600 dark:text-orange-400 mb-1">Blogger</div>
+                    <span id="summaryBlogger" class="text-sm text-gray-600 dark:text-gray-400">-</span>
+                </div>
+                <div class="bg-red-50 dark:bg-red-500/10 rounded-xl p-4">
+                    <div class="font-bold text-red-600 dark:text-red-400 mb-1">YouTube</div>
+                    <span id="summaryYoutube" class="text-sm text-gray-600 dark:text-gray-400">-</span>
+                </div>
+            </div>
+
+            <button onclick="goToUploadPage()" class="w-full py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-colors">
+                {{ t('btn_go_to_upload_page') }}
+            </button>
+        </div>
+    </div>
+
+    <!-- Session List Modal -->
+    <div id="sessionListModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800 dark:text-white">{{ t('label_publish_session_list') }}</h2>
+                <button onclick="closeSessionList()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">&times;</button>
+            </div>
+            <div id="sessionListContent"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==========================================
+// State
+// ==========================================
+let currentSessionId = null;
+let currentStep = 'script';
+let imagePoints = [];
+let selectedImageIdx = -1;
+
+var i18n = {
+    alert_select_project: "{{ t('alert_select_project') }}",
+    alert_no_script_in_project: "{{ t('alert_no_script_in_project') }}",
+    err_load_failed: "{{ t('err_load_failed') }}",
+    alert_enter_content: "{{ t('alert_enter_content') }}",
+    status_session_create_failed: "{{ t('status_session_create_failed') }}",
+    err_save_failed: "{{ t('err_save_failed') }}",
+    status_analyzing_images: "{{ t('status_analyzing_images') }}",
+    status_analysis_failed: "{{ t('status_analysis_failed') }}",
+    status_no_image_points: "{{ t('status_no_image_points') }}",
+    label_image_prefix: "{{ t('label_image_prefix') }}",
+    btn_delete: "{{ t('btn_delete') }}",
+    label_no_prompt: "{{ t('label_no_prompt') }}",
+    status_images: "{{ t('status_images') }}",
+    label_prompt_no: "{{ t('label_prompt_no') }}",
+    label_no_prompt_en: "{{ t('label_no_prompt_en') }}",
+    status_copied: "{{ t('status_copied') }}",
+    btn_copy_prompt: "{{ t('btn_copy_prompt') }}",
+    alert_select_image_point: "{{ t('alert_select_image_point') }}",
+    alert_enter_image_url: "{{ t('alert_enter_image_url') }}",
+    err_apply_failed: "{{ t('err_apply_failed') }}",
+    err_upload_failed: "{{ t('err_upload_failed') }}",
+    confirm_delete: "{{ t('confirm_delete') }}",
+    err_delete_failed: "{{ t('err_delete_failed') }}",
+    err_add_failed: "{{ t('err_add_failed') }}",
+    status_uploading: "{{ t('status_uploading') }}",
+    status_upload_done_prefix: "{{ t('status_upload_done_prefix') }}",
+    status_upload_done_mid: "{{ t('status_upload_done_mid') }}",
+    status_upload_done_suffix: "{{ t('status_upload_done_suffix') }}",
+    status_error: "{{ t('status_error') }}",
+    status_html_gen_failed: "{{ t('status_html_gen_failed') }}",
+    alert_select_platform: "{{ t('alert_select_platform') }}",
+    status_post_done: "{{ t('status_post_done') }}",
+    status_go_preview: "{{ t('status_go_preview') }}",
+    status_failed: "{{ t('status_failed') }}",
+    err_post_failed: "{{ t('err_post_failed') }}",
+    alert_need_project_connection: "{{ t('alert_need_project_connection') }}",
+    status_no_sessions: "{{ t('status_no_sessions') }}",
+    label_untitled: "{{ t('label_untitled') }}",
+    status_load_failed: "{{ t('status_load_failed') }}",
+    confirm_delete_session: "{{ t('confirm_delete_session') }}",
+    char_unit: "{{ t('char_unit') }}"
+};
+
+// ==========================================
+// Init
+// ==========================================
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadProjects();
+    document.getElementById('sessionContent').addEventListener('input', updateCharCount);
+    updateCharCount();
+
+    // URL에서 session_id가 있으면 해당 세션 자동 로드
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('session_id');
+    if (sessionId) {
+        await loadSession(parseInt(sessionId));
+    }
+});
+
+function updateCharCount() {
+    const content = document.getElementById('sessionContent').value;
+    document.getElementById('charCount').textContent = `${content.length}${i18n.char_unit}`;
+}
+
+async function loadProjects() {
+    try {
+        const res = await fetch('/api/projects');
+        const data = await res.json();
+        const sel = document.getElementById('projectSelect');
+        (data.projects || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `${p.name} (${p.app_mode || 'longform'})`;
+            sel.appendChild(opt);
+        });
+    } catch(e) { console.error(e); }
+}
+
+// ==========================================
+// Step Navigation
+// ==========================================
+const STEPS = ['script', 'images', 'blog', 'video', 'youtube'];
+
+function goToStep(step) {
+    currentStep = step;
+    STEPS.forEach(s => {
+        document.getElementById(`panel_${s}`).classList.toggle('hidden', s !== step);
+    });
+    updateStepUI();
+}
+
+function updateStepUI() {
+    const idx = STEPS.indexOf(currentStep);
+    STEPS.forEach((s, i) => {
+        const icon = document.getElementById(`stepIcon_${s}`);
+        if (i < idx) {
+            icon.className = 'w-10 h-10 mx-auto rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm mb-1';
+            icon.textContent = '✓';
+        } else if (i === idx) {
+            icon.className = 'w-10 h-10 mx-auto rounded-full bg-blue-500 text-white flex items-center justify-center font-bold text-sm mb-1';
+            icon.textContent = i + 1;
+        } else {
+            icon.className = 'w-10 h-10 mx-auto rounded-full bg-gray-200 dark:bg-gray-700 text-gray-500 flex items-center justify-center font-bold text-sm mb-1';
+            icon.textContent = i + 1;
+        }
+    });
+    // Progress lines
+    for (let i = 1; i <= 4; i++) {
+        const line = document.getElementById(`stepLine_${i}`);
+        if (line) line.style.width = (i <= idx) ? '100%' : '0%';
+    }
+}
+
+// ==========================================
+// Step 1: Script
+// ==========================================
+async function loadFromProject() {
+    const projectId = document.getElementById('projectSelect').value;
+    if (!projectId) return alert(i18n.alert_select_project);
+
+    try {
+        const res = await fetch(`/api/projects/${projectId}/script`);
+        const data = await res.json();
+        if (data.script) {
+            document.getElementById('sessionContent').value = data.script.full_script || '';
+            // 프로젝트 이름도 제목에
+            const projRes = await fetch(`/api/projects/${projectId}/full`);
+            const projData = await projRes.json();
+            if (projData.project) {
+                document.getElementById('sessionTitle').value = projData.project.name || '';
+            }
+            updateCharCount();
+        } else {
+            alert(i18n.alert_no_script_in_project);
+        }
+    } catch(e) { alert(i18n.err_load_failed + ': ' + e.message); }
+}
+
+async function saveAndGoToImages() {
+    const title = document.getElementById('sessionTitle').value.trim();
+    const content = document.getElementById('sessionContent').value.trim();
+    if (!content) return alert(i18n.alert_enter_content);
+
+    try {
+        if (currentSessionId) {
+            // 기존 세션 업데이트
+            await fetch(`/api/publish/sessions/${currentSessionId}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ title, content })
+            });
+        } else {
+            // 새 세션 생성
+            const projectId = document.getElementById('projectSelect').value || 0;
+            const res = await fetch('/api/publish/sessions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ project_id: parseInt(projectId), title, content })
+            });
+            const data = await res.json();
+            if (data.status !== 'ok') return alert(data.error || i18n.status_session_create_failed);
+            currentSessionId = data.session_id;
+        }
+        goToStep('images');
+    } catch(e) { alert(i18n.err_save_failed + ': ' + e.message); }
+}
+
+// ==========================================
+// Step 2: Images
+// ==========================================
+async function analyzeImagePoints() {
+    if (!currentSessionId) return alert(i18n.alert_enter_content);
+
+    const listEl = document.getElementById('imagePointsList');
+    listEl.innerHTML = `<div class="text-center py-8"><div class="animate-spin inline-block w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full"></div><p class="text-sm text-gray-400 mt-2">${i18n.status_analyzing_images}</p></div>`;
+
+    try {
+        const res = await fetch('/api/publish/analyze-images', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ session_id: currentSessionId })
+        });
+        const data = await res.json();
+        if (data.status !== 'ok') return alert(data.error || i18n.status_analysis_failed);
+
+        imagePoints = data.images || [];
+        renderImagePoints();
+    } catch(e) {
+        listEl.innerHTML = `<p class="text-red-400 text-center py-4">${i18n.status_analysis_failed}: ` + e.message + '</p>';
+    }
+}
+
+function renderImagePoints() {
+    const listEl = document.getElementById('imagePointsList');
+    if (imagePoints.length === 0) {
+        listEl.innerHTML = `<p class="text-gray-400 text-center py-4">${i18n.status_no_image_points}</p>`;
+        return;
+    }
+
+    let filled = 0;
+    listEl.innerHTML = imagePoints.map((img, i) => {
+        const hasImage = !!img.image_url;
+        if (hasImage) filled++;
+        return `
+        <div class="p-3 border-2 rounded-xl transition-all cursor-pointer ${selectedImageIdx === i ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10' : (hasImage ? 'border-green-300 bg-green-50/50 dark:bg-green-500/5' : 'border-gray-200 dark:border-gray-700')}"
+             onclick="selectImagePoint(${i})">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-bold ${hasImage ? 'text-green-500' : 'text-gray-400'}">#${img.position || i+1} ${hasImage ? '✓' : '○'}</span>
+                <button onclick="event.stopPropagation();deleteImagePoint(${img.id})" class="text-xs text-red-400 hover:text-red-600">${i18n.btn_delete}</button>
+            </div>
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">${img.prompt_ko || i18n.label_no_prompt}</p>
+            ${hasImage ? `<img src="${img.image_url}" class="w-full h-24 object-cover rounded-lg mt-2">` : ''}
+        </div>`;
+    }).join('');
+
+    document.getElementById('imageProgress').textContent = `${i18n.status_images}: ${filled}/${imagePoints.length}`;
+}
+
+function selectImagePoint(idx) {
+    selectedImageIdx = idx;
+    const img = imagePoints[idx];
+    const area = document.getElementById('selectedPromptArea');
+    area.innerHTML = `
+        <p class="text-xs text-gray-400 mb-1">#${img.position} - ${img.prompt_ko || ''}</p>
+        <p class="text-sm font-mono text-gray-800 dark:text-gray-200">${img.prompt_en || i18n.label_no_prompt_en}</p>
+    `;
+    document.getElementById('btnCopyPrompt').disabled = false;
+    renderImagePoints();
+}
+
+function copySelectedPrompt() {
+    if (selectedImageIdx < 0) return;
+    const prompt = imagePoints[selectedImageIdx].prompt_en || '';
+    navigator.clipboard.writeText(prompt).then(() => {
+        const btn = document.getElementById('btnCopyPrompt');
+        btn.textContent = i18n.status_copied;
+        setTimeout(() => { btn.textContent = i18n.btn_copy_prompt; }, 1500);
+    });
+}
+
+function openGoogleFlow() {
+    window.open('https://labs.google/fx/tools/image-fx', '_blank');
+}
+
+async function applyManualImage() {
+    if (selectedImageIdx < 0) return alert(i18n.alert_select_image_point);
+    const url = document.getElementById('manualImageUrl').value.trim();
+    if (!url) return alert(i18n.alert_enter_image_url);
+
+    const img = imagePoints[selectedImageIdx];
+    try {
+        await fetch(`/api/publish/images/${img.id}`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ image_url: url, status: 'done' })
+        });
+        imagePoints[selectedImageIdx].image_url = url;
+        imagePoints[selectedImageIdx].status = 'done';
+        document.getElementById('manualImageUrl').value = '';
+        renderImagePoints();
+
+        // 자동으로 다음 빈 슬롯 선택
+        const nextEmpty = imagePoints.findIndex((p, i) => i > selectedImageIdx && !p.image_url);
+        if (nextEmpty >= 0) selectImagePoint(nextEmpty);
+    } catch(e) { alert(i18n.err_apply_failed + ': ' + e.message); }
+}
+
+async function uploadImageFile(input) {
+    if (selectedImageIdx < 0) { alert(i18n.alert_select_image_point); input.value = ''; return; }
+    if (!input.files || !input.files[0]) return;
+    if (!currentSessionId) return;
+
+    const img = imagePoints[selectedImageIdx];
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+
+    try {
+        const res = await fetch(`/api/publish/upload-image/${currentSessionId}/${img.id}`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            imagePoints[selectedImageIdx].image_url = data.image_url;
+            imagePoints[selectedImageIdx].status = 'done';
+            renderImagePoints();
+            const nextEmpty = imagePoints.findIndex((p, i) => i > selectedImageIdx && !p.image_url);
+            if (nextEmpty >= 0) selectImagePoint(nextEmpty);
+        } else {
+            alert(data.error || i18n.err_upload_failed);
+        }
+    } catch(e) { alert(i18n.err_upload_failed + ': ' + e.message); }
+    input.value = '';
+}
+
+async function deleteImagePoint(imageId) {
+    if (!confirm(i18n.confirm_delete)) return;
+    try {
+        await fetch(`/api/publish/images/${imageId}`, { method: 'DELETE' });
+        imagePoints = imagePoints.filter(p => p.id !== imageId);
+        selectedImageIdx = -1;
+        renderImagePoints();
+    } catch(e) { alert(i18n.err_delete_failed); }
+}
+
+async function addImageSlot() {
+    if (!currentSessionId) return;
+    try {
+        const res = await fetch(`/api/publish/images/${currentSessionId}/add`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            imagePoints.push({
+                id: data.image_id,
+                position: data.position,
+                prompt_ko: '',
+                prompt_en: '',
+                image_url: null,
+                status: 'pending'
+            });
+            renderImagePoints();
+        }
+    } catch(e) { alert(i18n.err_add_failed); }
+}
+
+// ==========================================
+// Step 3: Blog Posting
+// ==========================================
+async function uploadImagesToWP() {
+    if (!currentSessionId) return alert(i18n.status_failed);
+    const statusEl = document.getElementById('wpUploadStatus');
+    statusEl.textContent = i18n.status_uploading;
+    try {
+        const res = await fetch(`/api/publish/upload-image-wp/${currentSessionId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            const results = data.results || [];
+            const ok = results.filter(r => r.status === 'ok').length;
+            const skip = results.filter(r => r.status === 'skip').length;
+            statusEl.textContent = `${i18n.status_upload_done_prefix}: ${ok}${i18n.status_upload_done_mid}, ${skip}${i18n.status_upload_done_suffix}`;
+            // 이미지 URL이 WordPress URL로 교체되었으므로 다시 로드
+            const imgRes = await fetch(`/api/publish/sessions/${currentSessionId}/images`);
+            const imgData = await imgRes.json();
+            imagePoints = imgData.images || [];
+            renderImagePoints();
+        } else {
+            statusEl.textContent = data.error || i18n.err_upload_failed;
+        }
+    } catch(e) { statusEl.textContent = i18n.status_error + ': ' + e.message; }
+}
+
+async function buildHtml() {
+    if (!currentSessionId) return alert(i18n.status_failed);
+    try {
+        const res = await fetch('/api/publish/build-html', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ session_id: currentSessionId })
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            document.getElementById('blogPreview').innerHTML = data.html;
+        } else {
+            alert(data.error || i18n.status_html_gen_failed);
+        }
+    } catch(e) { alert(i18n.status_error + ': ' + e.message); }
+}
+
+async function postToBlogs() {
+    if (!currentSessionId) return alert(i18n.status_failed);
+
+    const platforms = [];
+    if (document.getElementById('chkWordpress').checked) platforms.push('wordpress');
+    if (document.getElementById('chkBlogger').checked) platforms.push('blogger');
+    if (platforms.length === 0) return alert(i18n.alert_select_platform);
+
+    const tagsStr = document.getElementById('blogTags').value;
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+    try {
+        const res = await fetch('/api/publish/post-blog', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ session_id: currentSessionId, platforms, tags })
+        });
+        const data = await res.json();
+
+        const resultDiv = document.getElementById('blogResultContent');
+        let html = '';
+        const results = data.results || {};
+
+        for (const [platform, result] of Object.entries(results)) {
+            if (result.status === 'ok') {
+                html += `<div class="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg mb-2">
+                    <span class="font-bold text-green-600">${platform}</span>: ${i18n.status_post_done}
+                    ${result.url ? `<a href="${result.url}" target="_blank" class="text-blue-500 ml-2 text-sm">${i18n.status_go_preview} →</a>` : ''}
+                </div>`;
+            } else {
+                html += `<div class="p-3 bg-red-50 dark:bg-red-500/10 rounded-lg mb-2">
+                    <span class="font-bold text-red-600">${platform}</span>: ${result.error || i18n.status_failed}
+                </div>`;
+            }
+        }
+        resultDiv.innerHTML = html;
+        document.getElementById('blogResults').classList.remove('hidden');
+
+        // 요약 업데이트
+        if (results.wordpress?.status === 'ok') {
+            document.getElementById('summaryWp').innerHTML = `<a href="${results.wordpress.url}" target="_blank" class="text-blue-500">${i18n.status_post_done}</a>`;
+        }
+        if (results.blogger?.status === 'ok') {
+            document.getElementById('summaryBlogger').innerHTML = `<a href="${results.blogger.url}" target="_blank" class="text-orange-500">${i18n.status_post_done}</a>`;
+        }
+    } catch(e) { alert(i18n.err_post_failed + ': ' + e.message); }
+}
+
+// ==========================================
+// Step 4 & 5: Video & YouTube
+// ==========================================
+function startVideoProduction() {
+    if (!currentSessionId) return;
+    // 기존 프로젝트의 이미지 생성/TTS/렌더링 페이지로 이동
+    const projectId = document.getElementById('projectSelect').value;
+    if (projectId) {
+        window.open(`/image-gen?project=${projectId}`, '_blank');
+    } else {
+        alert(i18n.alert_need_project_connection);
+    }
+}
+
+function goToUploadPage() {
+    const projectId = document.getElementById('projectSelect').value;
+    if (projectId) {
+        window.open(`/video-upload?project=${projectId}`, '_blank');
+    } else {
+        window.open('/video-upload', '_blank');
+    }
+}
+
+// ==========================================
+// Session Management
+// ==========================================
+async function createNewSession() {
+    currentSessionId = null;
+    selectedImageIdx = -1;
+    imagePoints = [];
+    document.getElementById('sessionTitle').value = '';
+    document.getElementById('sessionContent').value = '';
+    document.getElementById('projectSelect').value = '';
+    document.getElementById('imagePointsList').innerHTML = `<p class="text-gray-400 text-center py-8">${i18n.status_run_image_analysis}</p>`;
+    document.getElementById('blogPreview').innerHTML = `<p class="text-gray-400">${i18n.status_gen_html_preview_hint}</p>`;
+    document.getElementById('blogResults').classList.add('hidden');
+    goToStep('script');
+    updateCharCount();
+}
+
+async function showSessionList() {
+    document.getElementById('sessionListModal').classList.remove('hidden');
+    try {
+        const res = await fetch('/api/publish/sessions');
+        const data = await res.json();
+        const sessions = data.sessions || [];
+        const el = document.getElementById('sessionListContent');
+
+        if (sessions.length === 0) {
+            el.innerHTML = `<p class="text-gray-400 text-center py-8">${i18n.status_no_sessions}</p>`;
+            return;
+        }
+
+        el.innerHTML = sessions.map(s => `
+            <div class="flex items-center justify-between p-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onclick="loadSession(${s.id})">
+                <div>
+                    <div class="font-bold text-gray-800 dark:text-white">${s.title || i18n.label_untitled}</div>
+                    <div class="text-xs text-gray-400">${s.step || 'script'} | ${s.created_at || ''}</div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs font-bold">${s.status || 'draft'}</span>
+                    <button onclick="event.stopPropagation();deleteSession(${s.id})" class="text-red-400 hover:text-red-600 text-xs">${i18n.btn_delete}</button>
+                </div>
+            </div>
+        `).join('');
+    } catch(e) {
+        document.getElementById('sessionListContent').innerHTML = `<p class="text-red-400">${i18n.status_load_failed}</p>`;
+    }
+}
+
+function closeSessionList() {
+    document.getElementById('sessionListModal').classList.add('hidden');
+}
+
+async function loadSession(sessionId) {
+    try {
+        const res = await fetch(`/api/publish/sessions/${sessionId}`);
+        const data = await res.json();
+        if (data.status !== 'ok') return alert(data.error);
+
+        currentSessionId = sessionId;
+        const session = data.session;
+        document.getElementById('sessionTitle').value = session.title || '';
+        document.getElementById('sessionContent').value = session.content || '';
+        updateCharCount();
+
+        imagePoints = data.images || [];
+        renderImagePoints();
+
+        closeSessionList();
+        goToStep(session.step || 'script');
+    } catch(e) { alert(i18n.err_load_failed + ': ' + e.message); }
+}
+
+async function deleteSession(sessionId) {
+    if (!confirm(i18n.confirm_delete_session)) return;
+    try {
+        await fetch(`/api/publish/sessions/${sessionId}`, { method: 'DELETE' });
+        showSessionList();
+        if (currentSessionId === sessionId) createNewSession();
+    } catch(e) { alert(i18n.err_delete_failed); }
+}
+</script>
+{% endblock %}

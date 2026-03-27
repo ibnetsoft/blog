@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-8 animate-fadeIn">
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                {{ t('nav_logs') or '작업로그' }}
+                <span class="ml-2 px-2 py-0.5 text-xs bg-indigo-500 text-white rounded-full uppercase tracking-widest font-black">History</span>
+            </h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-1 font-medium">채널별 게시 상태 및 작업 이력을 확인합니다.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="fetchLogs()" class="p-2.5 bg-gray-100 dark:bg-gray-700 text-gray-500 hover:text-indigo-500 rounded-xl transition-all shadow-sm" title="새로고침">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Logs Table Container -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700/50 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-gray-50/50 dark:bg-gray-900/30 border-b border-gray-100 dark:border-gray-700">
+                        <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest w-40">일시</th>
+                        <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest w-32">플랫폼</th>
+                        <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">게시글 제목</th>
+                        <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest w-24">상태</th>
+                        <th class="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest w-24">링크</th>
+                    </tr>
+                </thead>
+                <tbody id="logsTableBody" class="divide-y divide-gray-100 dark:divide-gray-700/50">
+                    <!-- Logs will be rendered here -->
+                    <tr>
+                        <td colspan="5" class="px-6 py-20 text-center">
+                            <div class="flex flex-col items-center gap-3 opacity-20">
+                                <span class="text-4xl">📋</span>
+                                <p class="text-sm font-bold">로그를 불러오는 중입니다...</p>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fadeIn {
+        animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .platform-badge {
+        font-size: 10px;
+        font-weight: 800;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        text-transform: uppercase;
+    }
+</style>
+
+<script>
+    async function fetchLogs() {
+        const tbody = document.getElementById('logsTableBody');
+        try {
+            const res = await fetch('/api/blog/logs?limit=50');
+            const data = await res.json();
+            
+            if (data.status === 'ok' && data.logs) {
+                renderLogs(data.logs);
+            } else {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-10 text-center text-red-500">로그를 가져오지 못했습니다.</td></tr>';
+            }
+        } catch (e) {
+            console.error('Fetch logs error:', e);
+            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-10 text-center text-red-500">서버 통신 오류가 발생했습니다.</td></tr>';
+        }
+    }
+
+    function renderLogs(logs) {
+        const tbody = document.getElementById('logsTableBody');
+        if (logs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-20 text-center text-gray-400 font-bold">아직 기록된 작업이 없습니다.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        logs.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50/50 dark:hover:bg-gray-900/20 transition-colors';
+            
+            const dateStr = new Date(log.created_at).toLocaleString('ko-KR', {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+
+            // 플랫폼 스타일링
+            let pClass = 'bg-gray-100 text-gray-600';
+            let pName = log.platform;
+            if (log.platform === 'wordpress') {
+                pClass = 'bg-blue-500/10 text-blue-500';
+                pName = 'WordPress';
+            } else if (log.platform.startsWith('blogger')) {
+                pClass = 'bg-orange-500/10 text-orange-500';
+                pName = log.account_name || 'Blogger';
+            } else if (log.platform.startsWith('telegram')) {
+                pClass = 'bg-sky-500/10 text-sky-500';
+                pName = log.account_name || 'Telegram';
+            }
+
+            // 상태 스타일링
+            const statusClass = log.status === 'ok' 
+                ? 'bg-emerald-500/10 text-emerald-500' 
+                : 'bg-red-500/10 text-red-500';
+            const statusText = log.status === 'ok' ? '성공' : '실패';
+
+            tr.innerHTML = `
+                <td class="px-6 py-4 text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums">${dateStr}</td>
+                <td class="px-6 py-4">
+                    <span class="platform-badge ${pClass}">${pName}</span>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-xs font-bold text-gray-800 dark:text-gray-200 line-clamp-1">${log.title || '(제목 없음)'}</span>
+                        ${log.status !== 'ok' ? `<span class="text-[10px] text-red-400 font-medium">${log.message}</span>` : ''}
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="text-[10px] font-black px-2 py-0.5 rounded-md ${statusClass}">${statusText}</span>
+                </td>
+                <td class="px-6 py-4">
+                    ${log.url ? `
+                        <a href="${log.url}" target="_blank" class="text-indigo-500 hover:text-indigo-600 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path>
+                            </svg>
+                        </a>
+                    ` : '<span class="text-gray-300">-</span>'}
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', fetchLogs);
+</script>
+{% endblock %}
