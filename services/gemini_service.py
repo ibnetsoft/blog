@@ -2633,7 +2633,15 @@ Motion prompt for this image:"""
             text = await self.generate_text(prompt, temperature=0.7)
             json_match = re.search(r'\{[\s\S]*\}', text)
             if json_match:
-                return json.loads(json_match.group())
+                data = json.loads(json_match.group())
+                
+                # [FIX] tags가 문자열로 오면 배열로 변환
+                if isinstance(data.get("tags"), str):
+                    data["tags"] = [t.strip() for t in data["tags"].split(',') if t.strip()]
+                elif not data.get("tags"):
+                    data["tags"] = []
+                
+                return data
         except Exception as e:
             print(f"Blog Metadata Analysis Error: {e}")
             

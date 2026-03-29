@@ -3,12 +3,15 @@
 테이블: global_settings, publish_sessions, publish_images
 """
 import sqlite3
+import os
 import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-DB_PATH = Path(__file__).parent / "blog_app.db"
+from config import config
+
+DB_PATH = os.path.join(config.BASE_DIR, "blog_app.db")
 
 
 def get_db():

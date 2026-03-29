@@ -107,6 +107,11 @@
 
                     <div id="sourceInputArea">
                         <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2 px-1">포스팅할 내용 (본문 텍스트)</label>
+                        <div id="sourceUrlWrapper" class="hidden mb-3">
+                            <input type="text" id="sourceUrl" 
+                                class="input-field w-full bg-gray-50/50 dark:bg-gray-900/50 border-gray-100 dark:border-gray-700"
+                                placeholder="https://...">
+                        </div>
                         <div id="sourceTextWrapper">
                             <textarea id="sourceText"
                                 class="input-field w-full bg-gray-50/50 dark:bg-gray-900/50 border-gray-100 dark:border-gray-700"
@@ -1192,68 +1197,133 @@
             });
             const metaData = await metaRes.json();
             
-            if (metaData.status === 'ok') {
-                // 현재 탭(일반적으로 워드프레스)에 메타데이터 적용
-                document.getElementById('blogTitle').value = metaData.title;
-                document.getElementById('blogTags').value = metaData.tags.join(', ');
-                document.getElementById('blogSummary').value = metaData.summary || '';
-                if (metaData.category) document.getElementById('blogCategory').value = metaData.category;
-                
-                // 상태 저장
-                updateBlogDataState();
+            if (metaData.status !== 'ok') {
+                throw new Error('메타데이터 추출에 실패했습니다. (AI 응답 오류)');
             }
 
-            // 2. 다른 언어 탭(JP-Log, EP-Log) 번역 및 채우기
-            const currentTitle = document.getElementById('blogTitle').value;
-            const currentSummary = document.getElementById('blogSummary').value;
-            
-            // 번역 대상 찾기 (일본어, 영어용 Blogger 계정 등)
-            const targets = [];
-            // JP-Log (일본어) 찾기
-            const jpAcc = connectedAccounts.find(a => a.name.toLowerCase().includes('jp') || a.lang === 'ja');
-            if (jpAcc) targets.push({ id: `blogger:${jpAcc.id}`, lang: 'ja', name: '일본어(JP-Log)' });
-            
-            // EP-Log (영어) 찾기
-            const epAcc = connectedAccounts.find(a => a.name.toLowerCase().includes('ep') || a.lang === 'en');
-            if (epAcc) targets.push({ id: `blogger:${epAcc.id}`, lang: 'en', name: '영어(EP-Log)' });
+            // [FIX] tags 안전 처리 (배열이 아닐 경우 대비)
+            const tagsArray = Array.isArray(metaData.tags) ? metaData.tags : [];
+            const tagsString = tagsArray.join(', ');
 
-            for (const target of targets) {
-                statusText.innerText = `${target.name} 탭 번역 및 생성 중...`;
-                const transRes = await fetch('/api/blog/translate', {
+            // 2단계: 현재 탭의 메타데이터 업데이트 (UI 반영)
+            let currentLang = 'ko';
+            if (currentBlogTab.startsWith('blogger:')) {
+                const accId = currentBlogTab.split(':')[1];
+                const acc = connectedAccounts.find(a => String(a.id) === String(accId));
+                if (acc) currentLang = acc.lang || 'ja';
+            }
+
+            // 현재 탭이 한국어가 아니면 번역해서 채우기
+            if (currentLang !== 'ko') {
+                statusText.innerText = "현재 탭 언어에 맞게 제목/태그 번역 중...";
+                const curTransRes = await fetch('/api/blog/translate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        title: currentTitle,
-                        content: content,
-                        summary: currentSummary,
-                        tags: document.getElementById('blogTags').value,
-                        category: document.getElementById('blogCategory').value,
-                        target_language: target.lang,
+                        title: metaData.title,
+                        summary: metaData.summary || '',
+                        tags: tagsString,
+                        category: metaData.category || '',
+                        target_language: currentLang,
                         skip_content: true
                     })
                 });
-                const transData = await transRes.json();
+                const curTransData = await curTransRes.json();
+                if (curTransData.status === 'ok') {
+                    document.getElementById('blogTitle').value = curTransData.title || '';
+                    document.getElementById('blogTags').value = curTransData.tags || '';
+                    document.getElementById('blogSummary').value = curTransData.summary || '';
+                    if (curTransData.category) document.getElementById('blogCategory').value = curTransData.category;
+                }
+            } else {
+                // 한국어면 그대로 적용
+                document.getElementById('blogTitle').value = metaData.title || '';
+                document.getElementById('blogTags').value = tagsString;
+                document.getElementById('blogSummary').value = metaData.summary || '';
+                if (metaData.category) document.getElementById('blogCategory').value = metaData.category;
+            }
+            
+            // 상태 저장 (현재 탭 데이터 확정)
+            updateBlogDataState();
+
+            // 3. 다른 언어 탭(JP-Log, EP-Log) 번역 및 채우기
+            // 기준 데이터는 위에서 추출한 한국어 메타데이터 사용
+            const sourceTitle = metaData.title;
+            const sourceSummary = metaData.summary || '';
+            const sourceTags = tagsString;
+            const sourceCategory = metaData.category || '';
+            
+            // 번역 대상 찾기 (현재 탭 제외)
+            const targets = [];
+            // 워드프레스 (KO) - 현재 탭이 아니면 추가
+            if (currentBlogTab !== 'wordpress') {
+                targets.push({ id: 'wordpress', lang: 'ko', name: '워드프레스(KO)' });
+            }
+
+            connectedAccounts.forEach(acc => {
+                const pId = `blogger:${acc.id}`;
+                if (pId !== currentBlogTab) {
+                    targets.push({ id: pId, lang: acc.lang || 'ja', name: `${acc.name}(${(acc.lang || 'ja').toUpperCase()})` });
+                }
+            });
+
+            for (const target of targets) {
+                statusText.innerText = `${target.name} 탭 번역 및 생성 중...`;
                 
-                if (transData.status === 'ok') {
+                // Rate limit 방지: 1초 딜레이
+                await new Promise(r => setTimeout(r, 1000));
+                
+                let transData = null;
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try {
+                        const transRes = await fetch('/api/blog/translate', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                title: sourceTitle,
+                                content: '',
+                                summary: sourceSummary,
+                                tags: sourceTags,
+                                category: sourceCategory,
+                                target_language: target.lang,
+                                skip_content: true
+                            })
+                        });
+                        transData = await transRes.json();
+                        console.log(`[MagicSync] ${target.name} (attempt ${attempt+1}):`, transData);
+                        if (transData.status === 'ok') break;
+                        // 실패 시 1.5초 대기 후 재시도
+                        if (attempt === 0) {
+                            console.warn(`[MagicSync] ${target.name} failed, retrying...`, transData);
+                            await new Promise(r => setTimeout(r, 1500));
+                        }
+                    } catch (fetchErr) {
+                        console.error(`[MagicSync] ${target.name} fetch error (attempt ${attempt+1}):`, fetchErr);
+                        if (attempt === 0) await new Promise(r => setTimeout(r, 1500));
+                    }
+                }
+                
+                if (transData && transData.status === 'ok') {
                     // 해당 탭 데이터 업데이트
                     if (!blogData[target.id]) blogData[target.id] = {};
                     
                     blogData[target.id].title = transData.title;
-                    blogData[target.id].tags = transData.tags || (metaData.tags ? metaData.tags.join(', ') : '');
+                    blogData[target.id].tags = transData.tags || sourceTags;
                     blogData[target.id].summary = transData.summary || '';
-                    blogData[target.id].category = transData.category || document.getElementById('blogCategory').value;
+                    blogData[target.id].category = transData.category || sourceCategory;
                     
-                    // 본문은 절대 번역으로 덮어쓰지 않음 (사용자 직접 입력을 위해)
-                    // 만약 기존 내용이 전혀 없다면 빈 문자열이나 가이드 문구 정도만 유지
                     if (!blogData[target.id].content) {
                         blogData[target.id].content = ''; 
                     }
+                } else {
+                    console.error(`[MagicSync] ${target.name} translation ultimately failed:`, transData);
+                    Utils.showToast(`${target.name} 메타데이터 번역 실패`, 'warning');
                 }
             }
 
             Utils.showToast('모든 탭의 번역 및 메타데이터 생성이 완료되었습니다!', 'success');
             
-            // 현재 탭 UI 갱신 (워드프레스 내용이 바뀌었을 수 있으므로)
+            // 현재 탭 UI 최종 갱신
             switchBlogTab(currentBlogTab);
             
         } catch (error) {
@@ -1294,7 +1364,7 @@
                 body: JSON.stringify({
                     source_type: sourceType,
                     source_value: sourceValue,
-                    platform: currentPlatform,
+                    platform: currentBlogTab,
                     blog_style: blogStyle,
                     language: language,
                     user_notes: autoImage ? "글 중간중간에 [이미지: 설명] 태그를 삽입하세요." : ""
@@ -1335,8 +1405,11 @@
     async function translateEditor(targetLang) {
         const title = document.getElementById('blogTitle').value;
         const content = document.getElementById('blogContent').value;
+        const summary = document.getElementById('blogSummary').value;
+        const tags = document.getElementById('blogTags').value;
+        const category = document.getElementById('blogCategory').value;
 
-        if (!title || !content) {
+        if (!title && !content) {
             Utils.showToast('번역할 내용이 없습니다.', 'warning');
             return;
         }
@@ -1344,7 +1417,7 @@
         const overlay = document.getElementById('blogLoadingOverlay');
         const statusText = document.getElementById('loadingStatusText');
         overlay.classList.remove('hidden');
-        statusText.innerText = `[${targetLang.toUpperCase()}]로 번역 중...`;
+        statusText.innerText = `[${targetLang.toUpperCase()}]로 전체 번역 중...`;
 
         try {
             const response = await fetch('/api/blog/translate', {
@@ -1353,6 +1426,9 @@
                 body: JSON.stringify({
                     title: title,
                     content: content,
+                    summary: summary,
+                    tags: tags,
+                    category: category,
                     target_language: targetLang
                 })
             });
@@ -1361,6 +1437,11 @@
             if (result.status === 'ok') {
                 document.getElementById('blogTitle').value = result.title;
                 document.getElementById('blogContent').value = result.content;
+                if (result.summary) document.getElementById('blogSummary').value = result.summary;
+                if (result.tags) document.getElementById('blogTags').value = result.tags;
+                if (result.category) document.getElementById('blogCategory').value = result.category;
+                
+                updateBlogDataState();
                 Utils.showToast(`${targetLang.toUpperCase()}로 번역되었습니다.`, 'success');
                 saveBlogState();
             } else {

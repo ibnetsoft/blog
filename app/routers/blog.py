@@ -13,6 +13,10 @@ router = APIRouter(prefix="/api/blog", tags=["Blog"])
 class BlogMetadataAnalysisRequest(BaseModel):
     content: str
 
+class IndependentBlogGenerateRequest(BaseModel):
+    topic: str
+    platforms: List[dict]
+
 BLOGGER_SCOPES = "https://www.googleapis.com/auth/blogger"
 
 def _get_redirect_uri(port: int = None):
@@ -119,9 +123,10 @@ class BlogGenerateRequest(BaseModel):
  
 class BlogTranslateRequest(BaseModel):
     title: str
-    content: str
+    content: Optional[str] = ""
     target_language: str
     summary: Optional[str] = None
+    tags: Optional[str] = None
     category: Optional[str] = None
     skip_content: Optional[bool] = False
  
@@ -582,3 +587,16 @@ async def get_logs(limit: int = 100):
     """작업 로그 조회"""
     logs = db.get_job_logs(limit)
     return {"status": "ok", "logs": logs}
+
+
+@router.post("/generate-independent")
+async def generate_independent_multi(req: IndependentBlogGenerateRequest):
+    """주제 하나로 여러 언어의 블로그 포스팅을 각각 독립적으로 병렬 생성"""
+    if not req.topic:
+        raise HTTPException(status_code=400, detail="주제가 없습니다.")
+    
+    res = await blog_service.generate_independent_multi_language_blogs(
+        topic=req.topic,
+        platforms=req.platforms
+    )
+    return res

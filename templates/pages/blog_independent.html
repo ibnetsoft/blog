@@ -1,0 +1,450 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-full mx-4 lg:mx-8 space-y-8 animate-fadeIn">
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+                독립적 다국어 AI 자동화
+                <span class="ml-2 px-2 py-0.5 text-xs bg-purple-500 text-white rounded-full uppercase tracking-widest font-black">Diamond</span>
+            </h1>
+            <p class="text-gray-500 dark:text-gray-400 mt-1 font-medium">주제 하나로 한/일/영 최적화 콘텐츠를 각각 독립적으로 자동 생성합니다.</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button id="btnGenerateIndependent" onclick="generateIndependentMulti()"
+                class="btn-primary flex items-center gap-2 px-8 py-3 rounded-xl shadow-lg shadow-purple-500/20 bg-gradient-to-r from-purple-600 to-pink-600 border-0 transform hover:scale-105 transition-all">
+                <span class="text-xl">💎</span>
+                <span class="font-black text-lg">AI 다국어 동시 작성 시작</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Left: Topic Input -->
+        <div class="lg:col-span-1 space-y-6">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50 bg-gradient-to-br from-white to-purple-50/30 dark:from-gray-800 dark:to-purple-900/10">
+                <div class="flex items-center gap-2 mb-6">
+                    <span class="p-2 bg-purple-500/10 text-purple-500 rounded-lg text-xl shadow-inner">💡</span>
+                    <h2 class="text-lg font-bold text-gray-800 dark:text-white">생성 주제 입력</h2>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2 px-1">블로그 주제 (또는 핵심 키워드)</label>
+                        <textarea id="topicInput"
+                            class="input-field w-full bg-gray-50/50 dark:bg-gray-900/50 border-gray-100 dark:border-gray-700 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-purple-500"
+                            rows="6" placeholder="AI가 어떤 글을 써주길 원하시나요? 주제를 상세히 적을수록 더 정확한 결과가 나옵니다.&#10;예: 2024년 일본 여행 필수 오미야게 추천 TOP 10"></textarea>
+                    </div>
+
+                    <div class="p-4 bg-purple-50/50 dark:bg-purple-900/10 rounded-xl border border-purple-100/50 dark:border-purple-900/20">
+                         <p class="text-[11px] text-gray-600 dark:text-gray-400 font-medium leading-relaxed">
+                            <span class="text-purple-500 font-bold">✨ 독립 생성 방식:</span><br>
+                            번역이 아닌 각 언어별(한/일/영) 전용 프롬프트를 사용하여 AI가 처음부터 새로 작성합니다. 각 나라의 문화와 검색 취향에 맞는 고품질 글이 생성됩니다.
+                         </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Blog Settings (Simplified) -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl border border-gray-100 dark:border-gray-700/50">
+                <div class="flex items-center gap-2 mb-6">
+                    <span class="p-2 bg-blue-500/10 text-blue-500 rounded-lg text-xl">⚙️</span>
+                    <h2 class="text-lg font-bold text-gray-800 dark:text-white">대상 플랫폼 확인</h2>
+                </div>
+                <div class="space-y-3" id="connectedPlatformsList">
+                    <!-- JS로 연동된 계정 표시 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Result Tabs & Editor -->
+        <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 lg:p-6 shadow-2xl border border-gray-100 dark:border-gray-700/50 min-h-[700px] flex flex-col relative w-full">
+                <!-- Loading Overlay -->
+                <div id="loadingOverlay" class="absolute inset-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md z-50 flex flex-col items-center justify-center hidden">
+                    <div class="relative w-24 h-24 mb-6">
+                        <div class="absolute inset-0 border-4 border-purple-500/20 rounded-full"></div>
+                        <div class="absolute inset-0 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div class="absolute inset-4 bg-purple-500/10 rounded-full flex items-center justify-center animate-pulse">
+                            <span class="text-2xl">🪄</span>
+                        </div>
+                    </div>
+                    <p class="text-xl font-black text-gray-900 dark:text-white tracking-tight">AI 다국어 작가가 글을 집필 중입니다...</p>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm mt-2 font-bold animate-pulse">약 1~2분 정도 소요될 수 있습니다 (언어별 독립 작성 중)</p>
+                    <div id="loadingStatusContainer" class="mt-8 space-y-2 w-64">
+                        <!-- Progress for each language -->
+                    </div>
+                </div>
+
+                <!-- Result Tabs -->
+                <div class="flex items-center justify-between mb-6 border-b border-gray-100 dark:border-gray-700">
+                    <div id="tabContainer" class="flex items-center gap-1 overflow-x-auto pb-1">
+                        <!-- JS로 동적 생성됨 -->
+                    </div>
+                     <button id="btnPostToBlog" onclick="postToBlog()"
+                        class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-md flex items-center gap-2">
+                        🚀 게시하기
+                    </button>
+                </div>
+
+                <!-- Editor Section -->
+                <div id="editorArea" class="flex-1 flex flex-col space-y-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Title</label>
+                        <input type="text" id="postTitle" oninput="saveCurrentTabData()"
+                            class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white font-bold text-base focus:ring-2 focus:ring-purple-500"
+                            placeholder="제목이 여기에 나타납니다.">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Tags</label>
+                            <input type="text" id="postTags" oninput="saveCurrentTabData()"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white font-bold text-xs"
+                                placeholder="태그 (쉼표 구분)">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1 ml-1">Summary</label>
+                            <input type="text" id="postSummary" oninput="saveCurrentTabData()"
+                                class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white font-bold text-xs"
+                                placeholder="메타 설명 요약">
+                        </div>
+                    </div>
+
+                    <div class="flex-1">
+                        <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">Content (HTML)</label>
+                        <div class="flex border-b border-gray-200 dark:border-gray-700 mb-2">
+                            <button onclick="switchMode('edit')" id="modeEdit" class="px-4 py-1 text-xs font-bold border-b-2 border-purple-500 text-purple-600">편집</button>
+                            <button onclick="switchMode('preview')" id="modePreview" class="px-4 py-1 text-xs font-bold border-b-2 border-transparent text-gray-400">미리보기</button>
+                        </div>
+                        <textarea id="postContent" oninput="saveCurrentTabData()"
+                            class="w-full h-[500px] bg-gray-50 dark:bg-gray-900/30 border-none rounded-xl p-4 text-gray-800 dark:text-gray-200 font-medium leading-relaxed resize-none focus:ring-0"
+                            placeholder="글 내용이 여기에 나타납니다."></textarea>
+                        <iframe id="postPreview" class="hidden w-full h-[500px] border border-gray-100 dark:border-gray-800 rounded-xl bg-white"></iframe>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fadeIn { animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    
+    .tab-active { 
+        background-color: #9333ea; 
+        color: white; 
+        box-shadow: 0 10px 15px -3px rgba(147, 51, 234, 0.3);
+    }
+    .tab-inactive { 
+        color: #9ca3af; 
+    }
+    .tab-inactive:hover {
+        color: #4b5563;
+    }
+    .dark .tab-inactive:hover {
+        color: #d1d5db;
+    }
+</style>
+
+<script>
+    let independentResults = {};
+    let currentTab = 'wordpress';
+    let connectedAccounts = [];
+
+    // 1. 초기 연동 정보 로드
+    async function initPage() {
+        try {
+            // WordPress 연동 확인 (Settings API)
+            const wpRes = await fetch('/api/settings/keys');
+            const wpData = await wpRes.json();
+            const wpUrl = wpData.wp_url?.value || '';
+            
+            const platformsList = document.getElementById('connectedPlatformsList');
+            platformsList.innerHTML = '';
+
+            if (wpUrl) {
+                platformsList.innerHTML += `
+                    <div class="flex items-center gap-3 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl border border-blue-100 dark:border-blue-800">
+                        <span class="w-8 h-8 flex items-center justify-center bg-blue-500 text-white rounded-lg text-sm font-black">W</span>
+                        <div>
+                            <div class="text-xs font-black text-gray-800 dark:text-gray-200">워드프레스 (한국어)</div>
+                            <div class="text-[10px] text-blue-500 font-bold truncate">${wpUrl.replace(/^https?:\/\//, '')}</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Blogger 연동 확인
+            const bRes = await fetch('/api/blog/accounts');
+            const bData = await bRes.json();
+            connectedAccounts = (bData.accounts || []).filter(a => a.connected);
+
+            connectedAccounts.forEach(acc => {
+                platformsList.innerHTML += `
+                    <div class="flex items-center gap-3 p-3 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl border border-orange-100 dark:border-orange-800">
+                        <span class="w-8 h-8 flex items-center justify-center bg-orange-500 text-white rounded-lg text-sm font-black">B</span>
+                        <div>
+                            <div class="text-xs font-black text-gray-800 dark:text-gray-200">${acc.name} (${acc.lang.toUpperCase()})</div>
+                            <div class="text-[10px] text-orange-500 font-bold truncate">Google Blogger</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            if (!wpUrl && connectedAccounts.length === 0) {
+                platformsList.innerHTML = '<p class="text-xs text-center text-gray-400 italic py-4">연동된 블로그가 없습니다.<br>설정 페이지에서 먼저 연동해주세요.</p>';
+            }
+
+            renderTabs();
+        } catch (e) {
+            console.error('Init Error:', e);
+            Utils.showToast('연동 정보를 가져오는데 실패했습니다.', 'error');
+        }
+    }
+
+    // 2. 독립적 다국어 생성 실행
+    async function generateIndependentMulti() {
+        const topic = document.getElementById('topicInput').value.trim();
+        if (!topic) {
+            Utils.showToast('주제를 입력해주세요.', 'warning');
+            return;
+        }
+
+        const overlay = document.getElementById('loadingOverlay');
+        overlay.classList.remove('hidden');
+
+        // 요청할 플랫폼 구성
+        const platforms = [{ language: 'ko', platform: 'wordpress', target_id: 'wordpress' }];
+        connectedAccounts.forEach(acc => {
+            platforms.push({ 
+                language: acc.lang || 'ja', 
+                platform: 'blogger', 
+                target_id: `blogger:${acc.id}` 
+            });
+        });
+
+        try {
+            const res = await fetch('/api/blog/generate-independent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topic, platforms })
+            });
+            const data = await res.json();
+            
+            if (data.status === 'ok') {
+                // 결과 저장
+                independentResults = {};
+                data.results.forEach(item => {
+                    independentResults[item.target_id] = {
+                        title: item.title,
+                        content: item.content,
+                        tags: (item.tags || []).join(', '),
+                        summary: item.summary || ''
+                    };
+                });
+                
+                // 첫 번째 탭 표시
+                currentTab = 'wordpress';
+                loadTabData(currentTab);
+                renderTabs();
+                Utils.showToast('모든 언어의 고품질 콘텐츠가 독립적으로 생성되었습니다!', 'success');
+            } else {
+                throw new Error(data.error || '생성 실패');
+            }
+        } catch (e) {
+            Utils.showToast(e.message, 'error');
+        } finally {
+            overlay.classList.add('hidden');
+        }
+    }
+
+    function renderTabs() {
+        const container = document.getElementById('tabContainer');
+        let html = `
+            <button onclick="switchTab('wordpress')" 
+                class="px-4 py-2 text-xs font-black rounded-t-xl transition-all ${currentTab === 'wordpress' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}">
+                한국어 (WP)
+            </button>
+        `;
+
+        connectedAccounts.forEach(acc => {
+            const tid = `blogger:${acc.id}`;
+            html += `
+                <button onclick="switchTab('${tid}')" 
+                    class="px-4 py-2 text-xs font-black rounded-t-xl transition-all ${currentTab === tid ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}">
+                    ${acc.lang.toUpperCase()} (Blog)
+                </button>
+            `;
+        });
+        container.innerHTML = html;
+    }
+
+    function switchTab(tid) {
+        saveCurrentTabData();
+        currentTab = tid;
+        loadTabData(tid);
+        renderTabs();
+    }
+
+    function loadTabData(tid) {
+        const data = independentResults[tid] || { title: '', content: '', tags: '', summary: '' };
+        document.getElementById('postTitle').value = data.title;
+        document.getElementById('postContent').value = data.content;
+        document.getElementById('postTags').value = data.tags;
+        document.getElementById('postSummary').value = data.summary;
+        
+        if (currentMode === 'preview') updatePreview();
+    }
+
+    function saveCurrentTabData() {
+        if (!independentResults[currentTab]) independentResults[currentTab] = {};
+        independentResults[currentTab].title = document.getElementById('postTitle').value;
+        independentResults[currentTab].content = document.getElementById('postContent').value;
+        independentResults[currentTab].tags = document.getElementById('postTags').value;
+        independentResults[currentTab].summary = document.getElementById('postSummary').value;
+    }
+
+    let currentMode = 'edit';
+    function switchMode(mode) {
+        currentMode = mode;
+        const editBtn = document.getElementById('modeEdit');
+        const prevBtn = document.getElementById('modePreview');
+        const editor = document.getElementById('postContent');
+        const preview = document.getElementById('postPreview');
+
+        if (mode === 'preview') {
+            editBtn.classList.remove('border-purple-500', 'text-purple-600');
+            editBtn.classList.add('border-transparent', 'text-gray-400');
+            prevBtn.classList.add('border-purple-500', 'text-purple-600');
+            prevBtn.classList.remove('border-transparent', 'text-gray-400');
+            editor.classList.add('hidden');
+            preview.classList.remove('hidden');
+            updatePreview();
+        } else {
+            prevBtn.classList.remove('border-purple-500', 'text-purple-600');
+            prevBtn.classList.add('border-transparent', 'text-gray-400');
+            editBtn.classList.add('border-purple-500', 'text-purple-600');
+            editBtn.classList.remove('border-transparent', 'text-gray-400');
+            preview.classList.add('hidden');
+            editor.classList.remove('hidden');
+        }
+    }
+
+    function updatePreview() {
+        const html = document.getElementById('postContent').value;
+        const iframe = document.getElementById('postPreview');
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(html);
+        doc.close();
+    }
+
+    async function postToBlog() {
+        saveCurrentTabData(); // 현재 보고 있는 탭의 수정사항 저장
+
+        const targetIds = Object.keys(independentResults);
+        if (targetIds.length === 0) {
+            Utils.showToast('게시할 생성된 내용이 없습니다. 먼저 작성을 시작해 주세요.', 'warning');
+            return;
+        }
+
+        if (!confirm(`생성된 ${targetIds.length}개 언어의 모든 포스팅을 각 블로그에 동시 게시하시겠습니까?`)) return;
+
+        const btn = document.getElementById('btnPostToBlog');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>전체 게시 중...</span>';
+
+        try {
+            // 1. 모든 플랫폼의 데이터를 BlogPostRequest 규격에 맞게 취합
+            const platforms = [];
+            const contents = {};
+            const metadata = {};
+            const platform_langs = {};
+
+            targetIds.forEach(tid => {
+                const data = independentResults[tid];
+                if (!data.content) return;
+
+                platforms.push(tid);
+                contents[tid] = data.content;
+                metadata[tid] = {
+                    title: data.title,
+                    tags: data.tags.split(',').map(t => t.trim()).filter(t => t),
+                    summary: data.summary
+                };
+
+                // 언어 코드 매핑
+                if (tid === 'wordpress') {
+                    platform_langs['wordpress'] = 'ko';
+                } else {
+                    const accId = tid.split(':')[1];
+                    const acc = connectedAccounts.find(a => String(a.id) === String(accId));
+                    platform_langs[tid.replace(':', '_')] = acc ? acc.lang : 'ja';
+                }
+            });
+
+            // 대표 메타데이터 (보통 첫 번째 탭 기준)
+            const firstTid = targetIds[0];
+            const mainData = independentResults[firstTid];
+
+            const payload = {
+                title: mainData.title,
+                content: mainData.content,
+                tags: mainData.tags.split(',').map(t => t.trim()).filter(t => t),
+                summary: mainData.summary,
+                platforms: platforms,
+                contents: contents,
+                metadata: metadata,
+                platform_langs: platform_langs
+            };
+
+            const res = await fetch('/api/blog/post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+
+            if (result.status === 'ok' || result.status === 'partial') {
+                let successCount = 0;
+                let failureCount = 0;
+                let errorMessages = [];
+
+                Object.entries(result.results || {}).forEach(([pKey, pRes]) => {
+                    if (pRes.status === 'ok') {
+                        successCount++;
+                        if (pRes.url) window.open(pRes.url, '_blank');
+                    } else {
+                        failureCount++;
+                        errorMessages.push(`${pKey}: ${pRes.error}`);
+                    }
+                });
+
+                if (failureCount === 0) {
+                    Utils.showToast(`🎉 모든 블로그(${successCount}개)에 성공적으로 게시되었습니다!`, 'success');
+                } else {
+                    Utils.showToast(`${successCount}개 성공, ${failureCount}개 실패. 오류: ${errorMessages.join(', ')}`, 'warning');
+                }
+            } else {
+                throw new Error(result.error || '전체 게시 중 오류가 발생했습니다.');
+            }
+        } catch (e) {
+            console.error('Batch Post Error:', e);
+            Utils.showToast(e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', initPage);
+</script>
+{% endblock %}

@@ -20,6 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 import uvicorn
+import webbrowser
+import threading
 
 from config import config
 import database as db
@@ -94,6 +96,14 @@ async def page_blog_image_gen(request: Request):
     return templates.TemplateResponse("pages/blog_image_gen.html", {
         "request": request,
         "page": "blog-image-gen",
+    })
+
+
+@app.get("/blog-independent", response_class=HTMLResponse)
+async def page_blog_independent(request: Request):
+    return templates.TemplateResponse("pages/blog_independent.html", {
+        "request": request,
+        "page": "blog-independent",
     })
 
 
@@ -234,10 +244,20 @@ async def set_language(body: Dict[str, Any]):
 # 실행
 # ==========================================
 
+def start_browser():
+    """서버 시작 후 브라우저 자동 오픈"""
+    url = f"http://127.0.0.1:{config.PORT}"
+    print(f"브라우저 오픈 시도: {url}")
+    webbrowser.open(url)
+
 if __name__ == "__main__":
     print("=" * 50)
     print("  SNS 자동화 앱 시작 (SNS Studio)")
     print("=" * 50)
+    
+    # 서버 실행 직전 타이머 작동 (2초 후 브라우저 오픈)
+    threading.Timer(2.0, start_browser).start()
+    
     uvicorn.run(
         app,
         host=config.HOST,
