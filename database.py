@@ -81,6 +81,14 @@ def init_db():
             url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS category_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_name TEXT UNIQUE NOT NULL,
+            template_html TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
 
     # 기본 글로벌 설정 초기화
@@ -364,6 +372,40 @@ def delete_blogger_account(account_id: int):
     cursor.execute("DELETE FROM blogger_accounts WHERE id = ?", (account_id,))
     conn.commit()
     conn.close()
+
+
+# ============ 카테고리 템플릿 관리 ============
+
+def save_category_template(category_name: str, template_html: str):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO category_templates (category_name, template_html, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(category_name) DO UPDATE SET
+            template_html = excluded.template_html,
+            updated_at = CURRENT_TIMESTAMP
+    """, (category_name, template_html))
+    conn.commit()
+    conn.close()
+
+
+def get_category_template(category_name: str) -> Optional[str]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT template_html FROM category_templates WHERE category_name = ?", (category_name,))
+    row = cursor.fetchone()
+    conn.close()
+    return row['template_html'] if row else None
+
+
+def get_all_category_templates() -> Dict[str, str]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT category_name, template_html FROM category_templates")
+    rows = cursor.fetchall()
+    conn.close()
+    return {row['category_name']: row['template_html'] for row in rows}
 
 
 # ============ 프로젝트 연동 스텁 (하위 호환) ============

@@ -80,23 +80,8 @@ def get_project_output_dir(project_id: int = None):
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
-    return RedirectResponse(url="/blog-automation")
+    return RedirectResponse(url="/blog-independent")
 
-
-@app.get("/blog-automation", response_class=HTMLResponse)
-async def page_blog_automation(request: Request):
-    return templates.TemplateResponse("pages/blog_automation.html", {
-        "request": request,
-        "page": "blog-automation",
-    })
-
-
-@app.get("/blog-image-gen", response_class=HTMLResponse)
-async def page_blog_image_gen(request: Request):
-    return templates.TemplateResponse("pages/blog_image_gen.html", {
-        "request": request,
-        "page": "blog-image-gen",
-    })
 
 
 @app.get("/blog-independent", response_class=HTMLResponse)

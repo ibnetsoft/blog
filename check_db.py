@@ -1,32 +1,25 @@
 import sqlite3
+import os
 
-def check_logs():
-    try:
-        conn = sqlite3.connect('blog_app.db')
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        
-        print("--- LAST 5 JOB LOGS ---")
-        cursor.execute("SELECT * FROM job_logs ORDER BY created_at DESC LIMIT 5")
-        rows = cursor.fetchall()
-        for row in rows:
-            print(dict(row))
-            
-        print("\n--- BLOGGER ACCOUNTS ---")
-        cursor.execute("SELECT * FROM blogger_accounts")
-        rows = cursor.fetchall()
-        for row in rows:
-            print(dict(row))
+DB_PATH = r"d:\BLOG\blog_app\blog_app.db"
 
-        print("\n--- LAST 5 PUBLISH SESSIONS ---")
-        cursor.execute("SELECT id, title, blog_wp_url, blog_blogger_url, status, updated_at FROM publish_sessions ORDER BY updated_at DESC LIMIT 5")
-        rows = cursor.fetchall()
-        for row in rows:
-            print(dict(row))
-            
-        conn.close()
-    except Exception as e:
-        print(f"Error: {e}")
+def check_accounts():
+    if not os.path.exists(DB_PATH):
+        print(f"DB file not found at {DB_PATH}")
+        return
+
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    print("--- Blogger Accounts ---")
+    cursor.execute("SELECT id, name, blog_id, lang, refresh_token FROM blogger_accounts")
+    rows = cursor.fetchall()
+    for row in rows:
+        has_token = "Yes" if row['refresh_token'] else "No"
+        print(f"ID: {row['id']}, Name: {row['name']}, BlogID: {row['blog_id']}, Lang: {row['lang']}, Connected: {has_token}")
+    
+    conn.close()
 
 if __name__ == "__main__":
-    check_logs()
+    check_accounts()

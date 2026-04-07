@@ -33,7 +33,13 @@ class GeminiService:
             "generationConfig": {
                 "temperature": temperature,
                 "maxOutputTokens": max_tokens
-            }
+            },
+            "safetySettings": [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+            ]
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -355,17 +361,28 @@ class GeminiService:
         self,
         prompt: str,
         aspect_ratio: str = "16:9",
-        num_images: int = 1
+        num_images: int = 1,
+        no_human: bool = True
     ) -> List[bytes]:
         """이미지 생성 (Imagen 3 우선, 실패 시 Imagen 2로 폴백)"""
         
-        # [MODIFIED] Use a wider range of models for fallback
+        # [나노바나나 2.0] 최신 이미지 모델 최우선 적용 및 사람 제외 규칙 강화
         models = [
-            "imagen-4.0-generate-001",      # Imagen 4 (Confirmed working for this environment)
-            "imagen-3.0-generate-001",      # Imagen 3 Standard
-            "imagen-3.0-fast-generate-001", # Imagen 3 Fast
-            "imagen-4.0-fast-generate-001", # Imagen 4 Fast
+            "gemini-3.1-flash-live-preview", # 사용자가 요청한 최신 모델
+            "imagen-4.0-generate-001",
+            "imagen-3.0-generate-001",
+            "imagen-3.0-fast-generate-001",
         ]
+        
+        # [CRITICAL] 사람 제거 옵션에 따라 프롬프트 Prefix 동적 구성
+        if no_human:
+            # 인물 배제 모드: 추상화 방지를 위해 사물/풍경 정밀 묘사 강화
+            no_human_prefix = "[STRICT PRODUCTION RULE: NO HUMANS, NO PEOPLE, NO FACE, NO BODY PARTS, NO PORTRAITS]. Focus ONLY on professional product photography of objects, technical symbols, or detailed scenery. Prompt: "
+            prompt = no_human_prefix + prompt
+        else:
+            # 인물 허용 모드: 본문 맥락에 맞는 자유로운 생성 (고품질 실사 스타일 강조)
+            pro_prefix = "[STYLE: PROFESSIONAL PHOTOTECHNICAL PHOTOGRAPHY, HIGH RESOLUTION]. Focus on cinematic composition and natural subjects. Prompt: "
+            prompt = pro_prefix + prompt
         
         last_error = None
         
@@ -850,24 +867,304 @@ class GeminiService:
             return []
 
 
-    async def generate_blog_content(self, source_content: str, platform: str, blog_style: str, language: str = "ko", user_notes: str = "") -> dict:
-        """참고 자료를 바탕으로 블로그 포스팅 생성"""
+    async def generate_blog_content(self, source_content: str, platform: str, blog_style: str, language: str = "ko", user_notes: str = "", category: str = None) -> dict:
+        """참고 자료를 바탕으로 블로그 포스팅 생성 (카테고리 템플릿 지원)"""
+        import datetime
+        
+        # 1. 카테고리 템플팅 (DB에서 해당 카테고리 전용 디자인 로드)
+        target_category = category or "General"
+        template_html = db.get_category_template(target_category)
+        
+        if not template_html:
+            # 대소문자 구분 없이 재시도 (프론트엔드 입력 대비)
+            all_templates = db.get_all_category_templates()
+            for cat_name, html in all_templates.items():
+                if cat_name.lower() == target_category.lower():
+                    template_html = html
+                    target_category = cat_name
+                    break
+            
+            # 그래도 없으면 General 사용
+            if not template_html:
+                template_html = db.get_category_template("General") or "<!-- No template found -->[[CONTENT]]"
+                target_category = "General"
+
+        # 2. 언어별 배경색 및 테마 오버라이드 고도화 (Premium & High Contrast)
+        # KO: Apple Style (White & Minimal)
+        # JA: Deep Chestnut Glass
+        # EN: Pure Black Gold
+        
+        # Default (KO / Global White)
+        bg_color = "#ffffff"
+        text_color = "#1d1d1f"
+        highlight_color = "#0071e3" # Apple Blue
+        card_bg = "rgba(255, 255, 255, 0.7)"
+        card_border = "rgba(0, 0, 0, 0.05)"
+        font_family = "'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+        container_width = "850px"
+        
+        if language == "ja":
+            bg_color = "#0a0707" # 아주 깊은 밤색 (Deepest Dark)
+            text_color = "#ffffff"
+            highlight_color = "#FF5252" # 선명한 레드 포인트
+            card_bg = "transparent" # 카드 배경 투명화 (본문에 집중)
+            card_border = "rgba(255, 255, 255, 0.05)"
+            container_width = "850px"
+        elif language == "en":
+            bg_color = "#050505" # 순수 블랙 (Purest Black)
+            text_color = "#ffffff"
+            highlight_color = "#E0C068" # 세련된 샴페인 골드
+            card_bg = "transparent" # 카드 배경 투명화로 조잡함 제거
+            card_border = "rgba(255, 255, 255, 0.05)"
+            container_width = "850px"
+        elif language == "ar":
+            bg_color = "#0b100d" # 깊은 오닉스 에메랄드
+            text_color = "#f8f9fa"
+            highlight_color = "#C5A059" # 샌드 골드
+            card_bg = "rgba(255, 255, 255, 0.02)"
+            card_border = "rgba(255, 255, 255, 0.05)"
+            font_family = "'Amiri', 'Inter', serif" 
+            container_width = "850px"
+        elif language == "it":
+            bg_color = "#050a14" # 딥 나폴리 블루 (Deep Navy)
+            text_color = "#ffffff"
+            highlight_color = "#D4AF37" # 클래식 골드
+            card_bg = "transparent"
+            card_border = "rgba(255, 255, 255, 0.05)"
+            container_width = "850px"
+            
+        theme_override = f"""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Outfit:wght@400;600;800;900&family=Amiri:wght@400;700&display=swap');
+
+        :root {{
+            --bg-color: {bg_color} !important;
+            --text-color: {text_color} !important;
+            --highlight-color: {highlight_color} !important;
+            --card-bg: {card_bg} !important;
+            --card-border: {card_border} !important;
+            --container-width: {container_width} !important;
+        }}
+        
+        /* [1] 전역 레이아웃 - Apple 스타일 미니멀리즘 */
+        html, body {{ 
+            background-color: var(--bg-color) !important; 
+            color: var(--text-color) !important; 
+            margin: 0; padding: 0; 
+            min-height: 100vh;
+            font-family: {font_family} !important;
+            line-height: 1.6 !important;
+            word-break: keep-all;
+            -webkit-font-smoothing: antialiased;
+            direction: {"rtl" if language == "ar" else "ltr"} !important;
+            text-align: {"right" if language == "ar" else "left"} !important;
+        }}
+        
+        .container {{
+            max-width: var(--container-width) !important;
+            margin: 0 auto !important;
+            padding: 0 1.5rem 0.5rem !important;
+        }}
+
+        /* [2] 다이나믹 컴포넌트 박스 - 평면적이고 세련된 레이아웃 (조잡함 제거) */
+        .hero, .content-card, .card, .section, section, .analysis-box, .verdict, 
+        .trading-panel, .glass-card, .idol-card, .product-showcase, .cta-banner {{ 
+            background-color: var(--card-bg) !important; 
+            color: var(--text-color) !important; 
+            border-bottom: 1px solid var(--card-border) !important;
+            padding: 0.1rem 0 !important;
+            margin-bottom: 0.5rem !important;
+            min-height: auto !important;
+            word-break: keep-all;
+        }}
+        .hero {{ 
+            padding-top: 2.5rem !important; /* 상단바 겹침 방지 여백 */
+            border-bottom: none !important; 
+        }}
+        
+        /* [추가] 불필요한 흰색 라운드 박스(빈 배너 자리) 제거 */
+        .hero-banner, .featured-image, .hero-image, .banner-image, .thumb-box {{
+            background: transparent !important;
+            border: none !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }}
+
+        /* 박스 안의 박스 지양 - 대신 포인트를 주는 방식 */
+        .tip-box, .note-box, .expert-note, .caution-box, .info-panel, .pro-tips, .review-bubble {{
+            background: rgba(255, 255, 255, 0.03) !important;
+            border: none !important;
+            border-left: 4px solid var(--highlight-color) !important; /* 세련된 포인트 바 */
+            border-radius: 4px !important;
+            padding: 2rem !important;
+            margin: 2.5rem 0 !important;
+            color: var(--text-color) !important;
+        }}
+
+        .tip-box::before {{ content: '💡 TIP'; display: block; font-weight: 800; font-size: 0.8rem; margin-bottom: 0.8rem; color: var(--highlight-color); }}
+        .expert-note::before {{ content: '🔍 EXPERT NOTE'; display: block; font-weight: 800; font-size: 0.8rem; margin-bottom: 0.8rem; color: var(--highlight-color); }}
+        .caution-box::before {{ content: '⚠️ CAUTION'; display: block; font-weight: 800; font-size: 0.8rem; margin-bottom: 0.8rem; color: #ff3b30; }}
+
+        /* [3] 박스 내부 텍스트 강제 대비 보정 및 가독성 극대화 */
+        .tip-box *, .expert-note *, .note-box *, .caution-box *, .analysis-box *, .card *, section *, .info-panel * {{
+            color: var(--text-color) !important;
+            opacity: 1 !important;
+            background: transparent !important; /* 배경 중첩 금지 */
+        }}
+        
+        /* [4] 타이포그래피 고도화 */
+        h1, h2, h3, h4, h5, h6 {{ 
+            color: var(--text-color) !important; 
+            font-family: 'Outfit', sans-serif !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.03em !important;
+            line-height: 1.2 !important;
+            margin-top: 2rem !important;
+            margin-bottom: 1rem !important;
+        }}
+        
+        .hero h1 {{ 
+            font-size: 2rem !important; 
+            font-weight: 900 !important;
+            text-align: center !important;
+            margin-top: 0.5rem !important;
+            margin-bottom: 1.5rem !important;
+            color: var(--text-color) !important;
+            text-shadow: none !important;
+            line-height: 1.3 !important; /* 겹침 방지 핵심 보정 */
+        }}
+
+        .hero p {{
+            color: var(--text-color) !important;
+            opacity: 0.8 !important;
+            text-align: center !important;
+        }}
+
+        p, li, span, td {{
+            font-size: 1.2rem !important;
+            font-weight: 400 !important;
+            color: var(--text-color) !important;
+            opacity: 0.92;
+        }}
+
+        /* [5] 한국어(KO) 전용 애플 스타일 미세조정 */
+        {f'body.ko {{ font-weight: 400; }} h1, h2 {{ letter-spacing: -0.05em !important; }}' if language == 'ko' else ''}
+
+        /* [6] 인터랙션 & 배지 스타일 */
+        .deal-badge, .badge, .tag {{
+            background: var(--highlight-color) !important;
+            color: #ffffff !important;
+            border-radius: 99px !important;
+            padding: 8px 20px !important;
+            font-size: 0.9rem !important;
+            font-weight: 700 !important;
+            display: inline-block !important;
+            margin: 4px 8px 12px 0 !important; /* 아래 여백 추가로 제목과 분리 */
+            vertical-align: middle !important;
+            position: relative !important;
+            z-index: 2 !important;
+        }}
+
+        /* [7] 이미지 최적화 - 거대 이미지 및 잘림 방지 */
+        img {{
+            width: auto !important;
+            max-width: 100% !important;
+            height: auto !important;
+            border-radius: 16px !important;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            margin: 3.5rem auto !important;
+            display: block !important;
+            object-fit: contain !important;
+        }}
+        
+        hr {{
+            border: 0;
+            border-top: 1px solid var(--card-border);
+            margin: 4rem 0;
+        }}
+    </style>
+"""
+        # </head> 바로 앞에 주입하여 모든 스타일을 덮어쓰도록 함
+        if "</head>" in template_html:
+            template_html = template_html.replace("</head>", f"{theme_override}</head>")
+        else:
+            template_html = theme_override + template_html
+
+        
+        
+        current_date = config.get_kst_time().strftime("%Y-%m-%d")
+        
         prompt = prompts.GEMINI_GENERATE_BLOG.format(
             source_content=source_content[:15000],  # 토큰 제한 고려
             platform=platform,
+            category=target_category,
             blog_style=blog_style,
             target_language=language,
-            user_notes=user_notes
+            user_notes=user_notes,
+            category_template=template_html,
+            current_date=current_date
         )
 
         try:
             text = await self.generate_text(prompt, temperature=0.7)
+            import re
+            # 1. 시도: XML 태그 파싱 (안정적, 토큰 부족으로 인한 잘림 허용)
+            title_match = re.search(r'<title>\s*(.*?)\s*(?:</title>|$)', text, re.DOTALL | re.IGNORECASE)
+            tags_match = re.search(r'<tags>\s*(.*?)\s*(?:</tags>|$)', text, re.DOTALL | re.IGNORECASE)
+            summary_match = re.search(r'<summary>\s*(.*?)\s*(?:</summary>|$)', text, re.DOTALL | re.IGNORECASE)
+            content_match = re.search(r'<content>\s*(.*?)\s*(?:</content>|$)', text, re.DOTALL | re.IGNORECASE)
+            
+            # XML 태그가 하나라도 감지되었다면 JSON으로 넘어가지 않음
+            if title_match or content_match:
+                content_val = content_match.group(1).strip() if content_match else ""
+                
+                # [[CONTENT]] 플레이스홀더가 본문에 남아있으면 제거
+                content_val = content_val.replace("[[CONTENT]]", "")
+                
+                # HTML 태그 보정 (생성 도중 잘렸을 경우)
+                if "<html" in content_val and "</html>" not in content_val:
+                    content_val += "\n</body>\n</html>"
+                    
+                tags_str = tags_match.group(1) if tags_match else ""
+                tags = [t.strip() for t in tags_str.split(',')] if tags_str else []
+                
+                final_title = title_match.group(1).strip() if title_match else "무제 (생성 중 끊김)"
+                
+                # 비한국어(KO 아님)인 경우 제목에서 한국어 강제 제거 (Clean Noise)
+                if language != "ko":
+                    # 한국어 유니코드 범위 (한글 완성형 및 자음/모음)
+                    kr_pattern = re.compile(r'[\uAC00-\uD7A3\u3131-\u318E]+')
+                    if kr_pattern.search(final_title):
+                        print(f"[Gemini] Cleaning Korean noise from {language} title: {final_title}")
+                        final_title = kr_pattern.sub('', final_title).strip()
+                        # 콜론이나 하이픈만 남은 경우 등을 대비해 정리
+                        final_title = re.sub(r'^[ :\-?=]+|[ :\-?=]+$', '', final_title).strip()
+
+                return {
+                    "title": final_title,
+                    "summary": summary_match.group(1).strip() if summary_match else "",
+                    "tags": tags,
+                    "content": content_val
+                }
+            
+            # 2. 풀백: 기존 JSON 파싱
             json_match = re.search(r'\{[\s\S]*\}', text)
             if json_match:
-                return json.loads(json_match.group())
-            return {"error": "블로그 생성 실패", "raw": text}
+                try:
+                    return json.loads(json_match.group())
+                except Exception as e:
+                    with open('/tmp/gemini_failed.txt', 'w', encoding='utf-8') as f:
+                        f.write(text)
+                    raise e
+                    
+            return {"error": "블로그 생성 실패 (포맷 인식 불가)", "raw": text}
         except Exception as e:
             print(f"Blog Generation Error: {e}")
+            try:
+                with open('/tmp/gemini_failed_error.txt', 'w', encoding='utf-8') as f:
+                    f.write(str(e))
+            except: pass
             return {"error": str(e)}
 
     async def generate_video_metadata(self, script_text: str) -> dict:
@@ -2627,7 +2924,10 @@ Motion prompt for this image:"""
         # HTML 태그 제거 (토큰 절약 및 순수 내용 분석)
         clean_content = re.sub(r'<[^>]+>', '', content)[:10000]
         
-        prompt = prompts.GEMINI_EXTRACT_BLOG_METADATA.format(content=clean_content)
+        prompt = prompts.GEMINI_EXTRACT_BLOG_METADATA.format(
+            content=clean_content,
+            current_date=config.get_kst_time().strftime("%Y-%m-%d")
+        )
         
         try:
             text = await self.generate_text(prompt, temperature=0.7)

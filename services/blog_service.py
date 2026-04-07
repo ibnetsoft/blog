@@ -15,7 +15,8 @@ class BlogService:
         blog_style: str = "info",
         language: str = "ko",
         user_notes: str = "",
-        raw_script: str = None
+        raw_script: str = None,
+        category: str = None
     ) -> Dict[str, Any]:
         """프로젝트 데이터를 기반으로 제목, 본문, 이미지를 자동으로 생성 및 구성 (다중 이미지 지원)"""
         try:
@@ -45,7 +46,8 @@ class BlogService:
                 platform=platform,
                 blog_style=blog_style,
                 language=language,
-                user_notes=user_notes
+                user_notes=user_notes,
+                category=category
             )
 
             if blog_result["status"] != "ok":
@@ -77,6 +79,9 @@ class BlogService:
                         prompt = point.get("prompt_en")
                         if not prompt:
                             continue
+                        
+                        # [사람 제외 규칙] 인물이 나오지 않도록 프롬프트 보강
+                        prompt += ", no humans, no people, photorealistic, professional style, architectural or product photography focus"
                             
                         image_bytes_list = await gemini_service.generate_image(
                             prompt=prompt,
@@ -91,8 +96,22 @@ class BlogService:
                             save_path = os.path.join(abs_dir, filename)
                             web_url = f"{web_dir}/{filename}"
                             
-                            with open(save_path, "wb") as f:
-                                f.write(img_bytes)
+                            # [최적화] 서버 측 리사이징 (800px 축소)
+                            try:
+                                from PIL import Image
+                                import io
+                                img = Image.open(io.BytesIO(img_bytes))
+                                if img.width > 800:
+                                    new_height = int(img.height * (800 / img.width))
+                                    # 명칭 호환성 유지 (LANCZOS)
+                                    resample_filter = getattr(Image, 'Resampling', Image).LANCZOS
+                                    img = img.resize((800, new_height), resample_filter)
+                                    print(f"  - Image {i+1} Resized to 800px")
+                                img.save(save_path, "PNG", optimize=True)
+                            except Exception as resize_err:
+                                print(f"  - Resize failed, saving original: {resize_err}")
+                                with open(save_path, "wb") as f:
+                                    f.write(img_bytes)
                             
                             generated_images.append(web_url)
                             # publish_service의 build_blog_html 규격에 맞게 데이터 저장
@@ -126,7 +145,7 @@ class BlogService:
             traceback.print_exc()
             return {"status": "error", "error": str(e)}
 
-    async def add_images_to_content(self, content: str, project_id: Optional[int] = None, image_count: int = 2) -> Dict[str, Any]:
+    async def add_images_to_content(self, content: str, project_id: Optional[int] = None, image_count: int = 2, no_human: bool = True) -> Dict[str, Any]:
         """기존 내용(HTML/텍스트)을 분석하여 어울리는 이미지를 생성하고 삽입"""
         try:
             from services.publish_service import publish_service
@@ -153,7 +172,7 @@ class BlogService:
                         if not prompt: continue
                             
                         image_bytes_list = await gemini_service.generate_image(
-                            prompt=prompt, aspect_ratio="16:9", num_images=1
+                            prompt=prompt, aspect_ratio="16:9", num_images=1, no_human=no_human
                         )
                         if image_bytes_list:
                             img_bytes = image_bytes_list[0]
@@ -162,7 +181,19 @@ class BlogService:
                             save_path = os.path.join(abs_dir, filename)
                             web_url = f"{web_dir}/{filename}"
                             
-                            with open(save_path, "wb") as f: f.write(img_bytes)
+                            # [최적화] 서버 측 리사이징 (800px 축소)
+                            try:
+                                from PIL import Image
+                                import io
+                                img = Image.open(io.BytesIO(img_bytes))
+                                if img.width > 800:
+                                    new_height = int(img.height * (800 / img.width))
+                                    img = img.resize((800, new_height), Image.Resampling.LANCZOS)
+                                    print(f"[BlogService] Image Resized to 800px")
+                                img.save(save_path, "PNG", optimize=True)
+                            except Exception as resize_err:
+                                print(f"[BlogService] Resize failed, saving original: {resize_err}")
+                                with open(save_path, "wb") as f: f.write(img_bytes)
                             
                             # 즉시 WordPress에 업로드하여 공개 URL 확보 (Blogger에서도 사용 가능)
                             public_url = web_url  # fallback
@@ -210,7 +241,8 @@ class BlogService:
         platform: str, 
         blog_style: str, 
         language: str = "ko",
-        user_notes: str = ""
+        user_notes: str = "",
+        category: str = None
     ) -> Dict[str, Any]:
         """소스로부터 블로그 포스팅 생성 핵심 로직"""
         try:
@@ -224,17 +256,18 @@ class BlogService:
                 content_data = {"title": "사용자 입력 텍스트", "content": source_value}
             else:
                 return {"status": "error", "error": f"지원하지 않는 소스 유형입니다: {source_type}"}
-
+    
             if not content_data.get("content"):
                 return {"status": "error", "error": "소스에서 내용을 추출하지 못했습니다."}
-
+    
             # 2. 블로그 생성 (Gemini)
             blog_data = await gemini_service.generate_blog_content(
                 source_content=content_data["content"],
                 platform=platform,
                 blog_style=blog_style,
                 language=language,
-                user_notes=user_notes
+                user_notes=user_notes,
+                category=category
             )
 
             if "error" in blog_data:
@@ -256,42 +289,75 @@ class BlogService:
     async def generate_independent_multi_language_blogs(
         self,
         topic: str,
-        platforms: List[Dict[str, str]]
+        platforms: List[Dict[str, str]],
+        source_content: str = ""
     ) -> Dict[str, Any]:
-        """주제 하나로 여러 언어의 블로그 포스팅을 각각 독립적으로 병렬 생성"""
+        """주제 하나로 한국어 원문을 생성한 뒤, 나머지 언어로 번역하여 반환 (번역 기반 워크플로우)"""
         import asyncio
-        
-        async def generate_single(config: Dict[str, str]):
-            lang = config.get("language", "ko")
-            plat = config.get("platform", "wordpress")
-            style = config.get("style", "info")
-            user_notes = config.get("user_notes", "")
-            
-            # 독립적 생성을 위해 주제(topic)를 소스로 사용
-            res = await self.generate_blog_from_source(
-                source_type="text",
-                source_value=topic,
-                platform=plat,
-                blog_style=style,
-                language=lang,
-                user_notes=user_notes
-            )
-            res["language"] = lang
-            res["target_id"] = config.get("target_id") # 프론트엔드 탭 매칭용
-            return res
 
-        try:
-            print(f"[BlogService] Starting independent multi-generation for topic: {topic[:30]}...")
-            tasks = [generate_single(p) for p in platforms]
-            results = await asyncio.gather(*tasks)
-            
-            return {
-                "status": "ok",
-                "results": results
-            }
-        except Exception as e:
-            print(f"generate_independent_multi_language_blogs Error: {e}")
-            return {"status": "error", "error": str(e)}
+        # 1. KO(한국어) 플랫폼 설정 찾기 (없으면 첫 번째를 기준으로 사용)
+        ko_config = next((p for p in platforms if p.get("language", "ko") == "ko"), platforms[0] if platforms else {})
+        other_configs = [p for p in platforms if p is not ko_config]
+
+        final_source = source_content if source_content and len(source_content.strip()) > 10 else topic
+
+        # 2. 한국어 원문 생성 (1회만)
+        print(f"[BlogService] Generating KO source for topic: {topic[:30]}...")
+        ko_res = await self.generate_blog_from_source(
+            source_type="text",
+            source_value=final_source,
+            platform=ko_config.get("platform", "wordpress"),
+            blog_style=ko_config.get("style", "info"),
+            language="ko",
+            user_notes=ko_config.get("user_notes", ""),
+            category=ko_config.get("category")
+        )
+        ko_res["language"] = "ko"
+        ko_res["target_id"] = ko_config.get("target_id")
+
+        results = [ko_res]
+
+        if ko_res.get("status") != "ok":
+            # 원문 생성 실패 시 나머지도 에러로 처리
+            for cfg in other_configs:
+                results.append({
+                    "status": "error",
+                    "language": cfg.get("language"),
+                    "target_id": cfg.get("target_id"),
+                    "error": "원문(한국어) 생성 실패로 번역을 건너뜁니다."
+                })
+            return {"status": "ok", "results": results}
+
+        # 3. 나머지 언어들은 원문을 번역하여 생성
+        async def translate_single(cfg: Dict[str, str]):
+            lang = cfg.get("language", "ja")
+            print(f"[BlogService] Translating to {lang}...")
+            try:
+                trans_res = await self.translate_blog(
+                    title=ko_res.get("title", ""),
+                    content=ko_res.get("content", ""),
+                    target_language=lang,
+                    summary=ko_res.get("summary", ""),
+                    tags=", ".join(ko_res.get("tags", [])) if isinstance(ko_res.get("tags"), list) else ko_res.get("tags", ""),
+                    category=cfg.get("category"),
+                    skip_content=False
+                )
+                trans_res["language"] = lang
+                trans_res["target_id"] = cfg.get("target_id")
+                return trans_res
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "language": lang,
+                    "target_id": cfg.get("target_id"),
+                    "error": str(e)
+                }
+
+        if other_configs:
+            translated = await asyncio.gather(*[translate_single(cfg) for cfg in other_configs])
+            results.extend(translated)
+
+        return {"status": "ok", "results": results}
 
     async def upload_local_images_to_public(self, content: str) -> str:
         """본문 내 로컬 이미지(/output/)를 WordPress에 업로드하여 공개 URL로 일괄 치환.
@@ -299,7 +365,8 @@ class BlogService:
         import re
         import urllib.parse
 
-        img_pattern = re.compile(r'<img [^>]*src="(/output/[^"]+)"[^>]*>')
+        # 로컬 이미지 경로 (/output/ 또는 output/) 및 다양한 따옴표 대응
+        img_pattern = re.compile(r'<img [^>]*src=["\']?(/output/[^"\'>]+|output/[^"\'>]+)["\']?[^>]*>')
         matches = img_pattern.findall(content)
 
         if not matches:
@@ -386,7 +453,8 @@ class BlogService:
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
 
-            # 이미지는 라우터(post_blog)에서 사전 업로드 완료됨 → content에 공개 URL 포함
+            # 1. 이미지 및 리소스 업로드 (로컬 경로 /output/ 이미지를 공개 URL로 치환)
+            content = await self.upload_local_images_to_public(content)
             processed_content = content
 
             # <style> 블록이 포함된 HTML은 WordPress 블록 에디터의 Custom HTML 블록으로 감싸기
@@ -512,7 +580,7 @@ class BlogService:
         except Exception as e:
             print(f"upload_image_to_wordpress Error: {e}")
             return {"status": "error", "error": str(e)}
-    def prepare_html_for_blogger(self, content: str, summary: str = None) -> str:
+    def prepare_html_for_blogger(self, content: str, summary: str = None, image_tags: List[str] = None) -> str:
         """전체 HTML 문서를 Blogger 포스트용으로 변환.
         - body/html/:root 스타일을 .bp-wrap 래퍼로 스코핑
         - <script> 제거 (Blogger API가 제거함)
@@ -576,8 +644,91 @@ class BlogService:
         
         # 6. 섹션 가시성 스타일 추가 (JS 없이도 표시되도록)
         force_visible = """
-/* Blogger: JS 없이도 모든 요소 강제 표시 */
+/* Blogger: JS 없이도 모든 요소 강제 표시 및 레이아웃 확보 */
+.bp-wrap {
+  display: block !important;
+  min-height: auto !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+  width: 100% !important;
+  max-width: 800px !important; /* 본문 최대 너비 제한 */
+  margin: 0 auto !important;
+  padding: 3rem 2.5rem !important;
+  padding-top: 2rem !important;
+  background-color: #ffffff !important;
+  border-radius: 20px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important; /* 내용물(사진 등)이 밖으로 나가는 것을 물리적으로 차단 */
+  z-index: 1 !important;
+}
 .bp-wrap * {
+  box-sizing: border-box !important;
+  max-width: 100% !important; /* 모든 요소가 본문 폭을 넘지 못하게 함 */
+}
+.bp-wrap figure, .bp-wrap div[style*="text-align:center"] {
+  display: block !important;
+  text-align: center !important;
+  margin: 3.5rem auto !important;
+  width: 100% !important;
+  clear: both !important;
+}
+.bp-wrap img {
+  display: block !important;
+  width: 92% !important;
+  max-width: 800px !important;
+  height: auto !important;
+  margin: 0 auto !important; /* 부모가 center인 경우 margin-top/bottom 배제하고 정렬에 집중 */
+  border-radius: 18px !important;
+  box-shadow: 0 20px 45px rgba(0,0,0,0.12) !important;
+  object-fit: contain !important;
+}
+/* 가독성 패치: 배경과 글자색의 선명한 대비(Contrast) 확보 */
+.bp-wrap {
+  color: #333333 !important; /* 기본 글자색: 어두운 회색 */
+}
+
+/* 1. 배경이 어두운 섹션 정밀 탐지 및 흰색 글씨 강제 */
+.bp-wrap [style*="background-color: rgb(17, 17, 17)"],
+.bp-wrap [style*="background: rgb(17, 17, 17)"],
+.bp-wrap [style*="background-color: #111"],
+.bp-wrap [style*="background: #111"],
+.bp-wrap [style*="background: #000"],
+.bp-wrap [style*="background-color: #000"],
+.bp-wrap .dark-mode, 
+.bp-wrap [class*="hero"][style*="background"], 
+.bp-wrap [class*="card"][style*="background-color"] {
+  color: #ffffff !important;
+}
+
+/* 2. 어두운 배경 내부의 텍스트 요소들 명시 보정 */
+.bp-wrap [style*="background"] h1, .bp-wrap [style*="background"] h2, .bp-wrap [style*="background"] h3,
+.bp-wrap [style*="background"] p, .bp-wrap [style*="background"] span,
+.bp-wrap [class*="hero"][style*="background"] h1,
+.bp-wrap [class*="hero"][style*="background"] p {
+  color: #ffffff !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
+}
+
+/* 3. 예외: 배경이 투명하거나 밝은 톤인 클래스는 다시 어두운 글씨로 */
+.bp-wrap [class*="hero"]:not([style*="background"]),
+.bp-wrap [class*="card"]:not([style*="background"]) {
+  color: #222222 !important;
+}
+
+/* 레이아웃 구조용 요소들만 block 강제 */
+.bp-wrap div, .bp-wrap section, .bp-wrap p, .bp-wrap h1, .bp-wrap h2, .bp-wrap h3, .bp-wrap h4, .bp-wrap h5, .bp-wrap h6 {
+  display: block;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+/* 뱃지, 버튼, 아이콘 등 인라인 요소들은 원래 크기 유지 (절대 늘어나지 않도록 고정) */
+.bp-wrap span, .bp-wrap a, .bp-wrap img, .bp-wrap b, .bp-wrap i, .bp-wrap strong, .bp-wrap em, .bp-wrap small,
+.bp-wrap [class*="badge"], .bp-wrap [class*="tag"], .bp-wrap [class*="button"], .bp-wrap [class*="btn"], 
+.bp-wrap [class*="chip"], .bp-wrap [class*="pill"], .bp-wrap .deal-badge, .bp-wrap .buy-button {
+  display: inline-block !important;
+  width: auto !important;
+  max-width: fit-content !important;
   opacity: 1 !important;
   visibility: visible !important;
 }
@@ -588,12 +739,21 @@ class BlogService:
 .bp-wrap [class*="animate"],
 .bp-wrap [class*="reveal"],
 .bp-wrap [class*="hidden"],
-.bp-wrap [data-aos] {
+.bp-wrap [data-aos],
+.bp-wrap [class*="hero"],
+.bp-wrap [class*="feature"] {
   opacity: 1 !important;
   transform: none !important;
   visibility: visible !important;
   transition: none !important;
   animation: none !important;
+  display: block !important;
+  min-height: auto !important;
+}
+.bp-wrap .container, .bp-wrap .content-card {
+  max-width: 100% !important;
+  width: 100% !important;
+  padding: 0 0.5rem 0.5rem !important; /* 상단 패딩 제거 */
 }
 """
         scoped_css += force_visible
@@ -611,13 +771,20 @@ class BlogService:
         # 8. 요약문(summary) 삽입 (SEO 최적화 및 레이아웃 구조 보호)
         # 중요: 스타일 태그 뒤, 본문 래퍼 내부의 맨 앞에 배치하여 스타일이 무시되지 않도록 함
         if summary:
-            result_parts.append(f'<div style="display:none;">{summary}</div>')
+            summary_html = f'<div style="display:none; overflow:hidden; width:0; height:0; max-height:0; max-width:0; opacity:0;">{summary}</div>\n'
+            result_parts.append(summary_html)
             
-        result_parts.append(f'{body_content.strip()}\n</div>')
+        body_to_inject = body_content
+        # 8.5 이미지 사후 주입 (이미지 유실 방지 최종 단계)
+        if image_tags:
+            body_to_inject = self.inject_images_into_content(body_to_inject, image_tags)
+            
+        result_parts.append(body_to_inject)
+        result_parts.append('</div>') # .bp-wrap close
         
-        result = "\n".join(result_parts)
-        print(f"[Blogger Prep] Done: {len(content)} → {len(result)} chars, styles={len(style_blocks)}, links={len(link_tags)}")
-        return result
+        final_html = "\n".join(result_parts)
+        print(f"[Blogger Prep] Final HTML length: {len(final_html)}")
+        return final_html
 
     async def post_to_blogger(
         self,
@@ -626,16 +793,25 @@ class BlogService:
         tags: List[str] = None,
         account_id: int = None,
         summary: str = None,
-        category: str = None
+        category: str = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """구글 블로그(Blogger)에 글 게시 - 계정별 또는 전역 설정 사용"""
         try:
+            print(f"[Blogger] --- Post Request Start ---")
+            print(f"[Blogger] Target Account: {account_id}, Title: {title[:30]}")
             if account_id:
                 # DB에서 해당 계정 정보 가져오기
                 acc = db.get_blogger_account(account_id)
                 if not acc:
+                    print(f"[Blogger] ERROR: Account ID {account_id} not found in DB")
                     return {"status": "error", "error": f"Blogger 계정(id={account_id})을 찾을 수 없습니다."}
-                blog_id = acc.get("blog_id") or config.BLOG_ID or db.get_global_setting("blog_id", "")
+                blog_id = acc.get("blog_id")
+                print(f"[Blogger] Found Blog ID in DB: {blog_id}")
+                if not blog_id:
+                    blog_id = config.BLOG_ID or db.get_global_setting("blog_id", "")
+                    print(f"[Blogger] Fallback to Global Blog ID: {blog_id}")
+                
                 client_id = acc.get("client_id") or config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
                 client_secret = acc.get("client_secret") or config.BLOG_CLIENT_SECRET or db.get_global_setting("blog_client_secret", "")
                 refresh_token = acc.get("refresh_token", "")
@@ -668,8 +844,11 @@ class BlogService:
                 "Content-Type": "application/json"
             }
 
-            # Blogger용 HTML 전처리 제거 (사용자 요청: 원본 그대로 포스팅)
-            # content = self.prepare_html_for_blogger(content, summary=summary)
+            # 1. 이미지 및 리소스 업로드 (Blogger는 로컬 경로를 인식할 수 없으므로 WP 미디어 라이브러리로 업로드 후 URL 치환)
+            content = await self.upload_local_images_to_public(content)
+
+            # 2. Blogger용 HTML 전처리 및 게시글 준비 (이미지 누락 방지를 위해 image_tags 전달)
+            content = self.prepare_html_for_blogger(content, summary=summary, image_tags=kwargs.get("image_tags"))
             html_content = content
 
 
@@ -734,8 +913,10 @@ class BlogService:
                         error_msg = res.text
                     
                     # 400 에러 등에 대한 상세 로그
-                    print(f"[Blogger] ERROR {res.status_code}: {error_msg}")
-                    print(f"[Blogger] Payload: {json.dumps(payload, ensure_ascii=False)[:500]}...")
+                    print(f"[Blogger] ERROR {res.status_code} on blog_id={blog_id}: {error_msg}")
+                    print(f"[Blogger] Payload Keys: {list(payload.keys())}")
+                    if "labels" in payload:
+                        print(f"[Blogger] Labels count: {len(payload['labels'])}, labels: {payload['labels']}")
                     
                     full_error = f"Blogger 게시 실패 ({res.status_code}): {error_msg}"
                     if res.status_code == 400:
@@ -809,8 +990,10 @@ class BlogService:
         import re
 
         lang_names = {
-            "ko": "Korean", "en": "English", "ja": "Japanese", 
-            "vi": "Vietnamese", "zh": "Chinese", "es": "Spanish"
+            "ko": "Korean", "en": "English", "ja": "Japanese",
+            "vi": "Vietnamese", "zh": "Chinese",
+            "es": "Spanish", "de": "German", "fr": "French",
+            "it": "Italian", "pt": "Portuguese", "id": "Indonesian", "ar": "Arabic"
         }
         target_name = lang_names.get(target_language, target_language)
 
@@ -824,8 +1007,19 @@ class BlogService:
             try:
                 translated_title = await gemini.generate_text(title_prompt, temperature=0.1, max_tokens=256)
                 translated_title = translated_title.strip().strip('"').strip("'")
-                translated_title = re.sub(r'^\[.*?\]\s*', '', translated_title)
-                translated_title = re.sub(r'^(Title|제목|タイトル|翻訳)\s*[:：]\s*', '', translated_title, flags=re.IGNORECASE)
+                
+                # 불필요한 노이즈 제거 로직 강화
+                noise_patterns = [
+                    r'^Source\s*language\s*[:：]\s*.*?\n',
+                    r'^Detected\s*language\s*[:：]\s*.*?\n',
+                    r'^Translated\s*to\s*.*?\n',
+                    r'^\[.*?\]\s*',
+                    r'^(Title|제목|タイトル|翻訳)\s*[:：]\s*'
+                ]
+                for pattern in noise_patterns:
+                    translated_title = re.sub(pattern, '', translated_title, flags=re.IGNORECASE)
+                
+                translated_title = translated_title.strip()
                 if translated_title and translated_title != title:
                     new_title = translated_title
             except Exception as te:
@@ -857,8 +1051,20 @@ class BlogService:
             tags_prompt = f"Translate the following blog markers/keywords/tags into {target_name}. Detect source language. Output ONLY the translated tags separated by commas.\n\nTags: {tags}"
             try:
                 translated_tags = await gemini.generate_text(tags_prompt, temperature=0.1, max_tokens=256)
-                new_tags = translated_tags.strip().strip('"').strip("'")
-                new_tags = re.sub(r'^(Tags|태그|タグ|翻訳|Keywords)\s*[:：]\s*', '', new_tags, flags=re.IGNORECASE)
+                translated_tags = translated_tags.strip().strip('"').strip("'")
+                
+                # 불필요한 노이즈 제거 로직 강화 (Source language: Korean 등)
+                noise_patterns = [
+                    r'Source\s*language\s*[:：]\s*[^\n,]*',
+                    r'Detected\s*language\s*[:：]\s*[^\n,]*',
+                    r'Translated\s*to\s*[^\n,]*',
+                    r'^(Tags|태그|タグ|翻訳|Keywords)\s*[:：]\s*'
+                ]
+                for pattern in noise_patterns:
+                    translated_tags = re.sub(pattern, '', translated_tags, flags=re.IGNORECASE).strip()
+                
+                # 콤마로 시작하거나 끝나는 경우 클리닝
+                new_tags = translated_tags.strip(',').strip()
             except Exception as tg_err:
                 print(f"[Translate] Tags translation error: {tg_err}")
 
@@ -902,18 +1108,23 @@ class BlogService:
             make_placeholder, safe_content, flags=re.DOTALL
         )
 
-        content_prompt = f"""You are a professional translator. Translate ALL Korean text in the following HTML into {target_name}.
+        lang_guides = {
+            "ja": "자연스럽고 세련된 일본어 경어체(Desu/Masu)를 사용하세요.",
+            "en": "Professional, minimalist, and engaging standard English.",
+            "ar": "Modern Standard Arabic with a professional and authoritative tone. Ensure correct grammar.",
+            "it": "Sophisticated and elegant Italian. Use an engaging tone for premium lifestyle/design content."
+        }
+        lang_extra = lang_guides.get(target_language.lower(), "")
+
+        content_prompt = f"""You are a professional translator and editor. Translate ALL Korean text in the following HTML into {target_name}.
 
 RULES:
-1. Translate ALL human-readable Korean text into {target_name} (including text in <table>, <th>, <td>, headings, paragraphs, spans, etc.)
-2. Keep ALL HTML tags, attributes, and structure EXACTLY as they are.
-3. NEVER modify any style="..." attributes. Keep them byte-for-byte identical.
-4. NEVER modify any class="..." attributes. Keep them byte-for-byte identical.
-5. NEVER modify any data-* attributes or id attributes.
-6. Keep ALL __PRESERVE_X__ placeholders EXACTLY as they are. Do NOT translate or modify them.
-7. Keep emoji, numbers, proper nouns (person names, team names) as-is or transliterate them naturally.
-8. Do NOT wrap output in markdown code blocks.
-9. Output ONLY the translated HTML. No explanations, no labels.
+1. Translate ALL human-readable Korean text into {target_name}. {lang_extra}
+2. Keep ALL HTML tags, classes, and structure EXACTLY as they are.
+3. NEVER modify style attributes or class names.
+4. Keep emoji, numbers, and __PRESERVE_X__ placeholders identical.
+5. High Quality: Ensure the translation is natural for a premium blog post.
+6. Output ONLY translated HTML. No talk.
 
 HTML TO TRANSLATE:
 {safe_content}"""
@@ -953,32 +1164,59 @@ HTML TO TRANSLATE:
         }
 
     def extract_image_tags(self, html_content: str) -> List[str]:
-        """HTML에서 <img> 태그들을 추출하여 리스트로 반환"""
+        """HTML에서 <img> 태그들을 추출하여 리스트로 반환 (캡션 그룹 포함)"""
         import re
         if not html_content:
             return []
-        # 다양한 형식의 img 태그 추출 (div.separator로 감싸진 것 포함)
-        tags = re.findall(r'<div[^>]*class="separator"[^>]*>[\s\S]*?</div>|<div[^>]*>\s*<img[^>]*>\s*</div>|<figure[^>]*>.*?</figure>|<img[^>]*>', html_content, re.IGNORECASE | re.DOTALL)
-        return [t.strip() for t in tags]
+        
+        # 1. 캡션이나 레이아웃용 div/figure로 감싸진 태그 우선 추출
+        # <div class="separator">...</div>, <figure>...</figure> 등
+        patterns = [
+            r'<div[^>]*class="separator"[^>]*>[\s\S]*?</div>',
+            r'<div[^>]*style="text-align: center;"[^>]*>\s*<img[^>]*>[\s\S]*?</div>',
+            r'<figure[^>]*>[\s\S]*?</figure>',
+            r'<img[^>]*>'
+        ]
+        
+        combined_pattern = '|'.join(patterns)
+        tags = re.findall(combined_pattern, html_content, re.IGNORECASE | re.DOTALL)
+        
+        # 중복 제거 (내용 기준)
+        seen = set()
+        unique_tags = []
+        for t in tags:
+            stripped = t.strip()
+            if stripped and stripped not in seen:
+                unique_tags.append(stripped)
+                seen.add(stripped)
+                
+        return unique_tags
 
     def inject_images_into_content(self, target_content: str, image_tags: List[str]) -> str:
-        """대상 본문에 이미지 태그들을 하단에 추가 (중복 방지)"""
+        """대상 본문에 이미지 태그들을 하단에 추가 (중복 방지 강화)"""
         if not image_tags:
             return target_content
         
-        # 이미 포함된 이미지 URL 확인 (간단한 검색)
         final_content = target_content or ""
+        import re
+        
         for tag in image_tags:
-            # 태그 내의 src 추출 시도
-            import re
+            # 태그 내의 src(URL) 추출
             src_match = re.search(r'src="([^"]+)"', tag)
             if src_match:
                 src = src_match.group(1)
-                if src in final_content:
-                    continue # 이미 존재하면 건너뜀
+                # 본문에 이미 해당 주소가 있는지 확인 (쿼리스트링 제외하고 체크)
+                src_base = src.split('?')[0]
+                if src_base in final_content:
+                    print(f"[ImageInject] Skipping duplicate: {src_base}")
+                    continue 
             
-            # 하단에 추가
-            final_content += f"\n<p></p>\n{tag}"
+            # 본문에 이미 해당 태그 내용이 완전히 포함되어 있는지 확인
+            if tag in final_content:
+                continue
+
+            # 하단에 여백과 함께 추가
+            final_content += f"\n<p>&nbsp;</p>\n{tag}\n<p>&nbsp;</p>"
             
         return final_content
 
@@ -1012,6 +1250,7 @@ HTML TO TRANSLATE:
         if isinstance(res, dict):
             res["status"] = "ok"
         return res
+
 
 blog_service = BlogService()
 

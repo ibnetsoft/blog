@@ -283,39 +283,7 @@ JSON만 반환하세요."""
   - **반드시 LEFT/RIGHT arm 위치를 명시하고 마지막에 "There is no third hand or support object." 추가**:
     - ❌ 금지: "character holding a book while thinking" → AI가 손 3개 생성
     - ✅ 필수 (물건 들고 생각): "The left hand is clearly visible supporting the bottom of the book, while the right hand is raised to touch its chin in a thinking gesture. There is no third hand or support object."
-    - ✅ 필수 (가리키기): "The right hand points at [object]. The left hand rests on the hip. There is no third hand."
-    - ✅ 필수 (양손): "Both hands hold [object] in front. There is no third hand or support object."
-  - **색상 충돌 주의**: 손 색과 같은 색의 물체는 다른 색으로 묘사할 것.
-  - **불필요한 보조 물체 제거**: 받침대, 스탠드 등 제거.
-  - 모든 prompt_en에 반드시 포함: "strictly two arms and two hands, anatomically correct"
-- **JSON Only**: 설명 없이 오직 JSON 데이터만 반환하세요.
-"""
-
-    GEMINI_SUCCESS_ANALYSIS = """당신은 유튜브 콘텐츠 및 바이럴 마케팅 전문가입니다.
-제시된 유튜브 영상 정보를 바탕으로, 이 영상이 성공(높은 조회수)한 원인을 분석하고, 이를 벤치마킹한 새로운 콘텐츠를 기획해주세요.
-
-[분석 대상 영상]
-- 제목: {title}
-- 채널: {channel}
-- 조회수: {views}
-- 좋아요: {likes}
-- 시청자 니즈(댓글 분석 추정): {top_comment}
-
-[요청 사항]
-1. **성공 요인 분석 (Success Factor)**: 이 영상이 왜 사람들의 이목을 끌었는지, 제목/썸네일/소재 측면에서 1문장으로 핵심을 뚫어주세요.
-2. **벤치마킹 제목 (Pattern Title)**: 원본의 성공 패턴(어그로 포인트)을 유지하되, 약간 다른 각도로 비틀어 새로운 제목을 창작하세요. (너무 똑같으면 안됨)
-3. **시놉시스 (Synopsis)**: 해당 제목으로 영상을 만든다면 어떤 내용으로 구성해야 할지 2-3문장으로 요약하세요.
-
-다음 JSON 형식으로만 응답하세요:
-{{
-    "original_title": "{title}",
-    "success_factor": "분석 내용",
-    "benchmarked_title": "제안 제목",
-    "synopsis": "기획 요약"
-}}
-JSON만 반환하세요."""
-
-    GEMINI_THUMBNAIL_HOOK_TEXT = """당신은 유튜브 썸네일 카피라이팅 전문가입니다.
+니다.
 아래 영상 대본을 분석하여 클릭률을 극대화하는 썸네일 문구를 생성해주세요.
 
 [영상 대본]
@@ -453,48 +421,71 @@ JSON만 반환하세요."""
 }}
 JSON만 반환하세요."""
 
-    GEMINI_GENERATE_BLOG = """당신은 **프리미엄 블로그 콘텐츠 제작자이자 UI/UX 기반 HTML 아티클 디자이너**입니다.
-제공된 참고 자료를 바탕으로, 단순한 글이 아닌 **인터랙티브 + 고급 디자인 + 정보 전달력**을 모두 갖춘 "웹페이지형 블로그 콘텐츠"를 생성하는 것이 당신의 임무입니다.
+    GEMINI_GENERATE_BLOG = """당신은 **세계 최고의 프리미엄 블로그 에디터이자 UI/UX 기반 디자인 시스템 디자이너**입니다.
+제공된 소스 데이터를 바탕으로, 독자가 감탄할 정도의 **'Apple 스타일' 미니멀하고 고급스러운 현대적 블로그 포스팅**을 생성하세요.
 
-### 1. 참고 자료
+### 📌 작성 주제 / 소스 자료 (가장 중요! 반드시 이 내용을 기반으로 작성하세요!)
 {source_content}
 
-### 2. 블로그 설정
-- **플랫폼:** {platform}
-- **블로그 스타일:** {blog_style}
-- **목표 언어:** {target_language}
-- **추가 요청:** {user_notes}
+### 🍱 핵심 목표: 'Extreme Premium & High Readability'
+1. **타깃 플랫폼**: {platform}
+2. **카테고리**: {category}
+3. **블로그 스타일**: {blog_style}
+4. **목표 언어**: {target_language} (반드시 이 언어로 작성하세요!)
 
-### 3. 디자인 컨셉 (필수 적용)
-- **다크 테마**: 블랙(#000000) 배경을 기반으로 블루/퍼플 계열의 그라디언트와 포인트 컬러 사용. 글씨색이 배경에 묻히지 않도록 선명한 화이트/밝은 회색 및 포인트 컬러를 적절히 배합하세요.
-- **미래지향적/테크**: 크립토, 테크 느낌의 세련된 UI. 글래스모피즘(Glassmorphism) 효과 적극 활용.
-- **랜딩페이지 느낌**: 섹션별 명확한 구분과 부드러운 애니메이션(Fade-in, Hover 효과 등).
-- **가독성 + 몰입감**: 본문 폰트 크기, 행간, 대비를 최적화하여 읽기 편하게 구성.
+### 🎨 디자인 및 구조 지침 (필수!)
+- **레이아웃**: `hero`, `section`, `content-card` 등의 클래스를 사용하여 논리적이고 풍성한 레이아웃을 구성하세요.
+- **애플 스타일 미니멀리즘**: 상자 안에 상자를 넣는 중첩 구조를 지양하고, **넓은 여백**과 **세련된 타이포그래피**만으로 본문에 집중하게 하세요. (조잡한 레이아웃 금지)
+- **인터랙티브 컴포넌트**: 아래 클래스들을 적재적소에 활용하여 가독성을 극대화하세요.
+    - `.tip-box`: 유용한 팁이나 보너스 정보
+    - `.expert-note`: 전문가의 조언이나 깊이 있는 분석
+    - `.caution-box`: 주의사항이나 경고
+    - `.checklist-section`: 체크리스트 또는 단계별 가이드
+    - `.feature-card`: 핵심 장점이나 특징 강조
+- **헤더 시각화**: `h1`은 Hero 섹션에 하나만 사용하고, `h2`, `h3`를 통해 위계 질서가 명확한 구조를 만드세요.
 
-### 4. 반드시 포함할 HTML 구조 (content 필드 내부)
-- **Hero Section**: 시선을 사로잡는 큰 제목과 매력적인 서브 타이틀. 배경에 은은한 그라디언트나 애니메이션 효과.
-- **Intro Section**: 글의 목적과 읽어야 할 이유를 요약.
-- **2열 Article Card**: 주요 내용을 2열 레이아웃의 카드 형태로 배치하여 시각적 다양성 제공.
-- **Pros & Cons (또는 핵심 분석)**: 깔끔한 대비 레이아웃.
-- **Interactive Checkbox**: 독자가 체크해볼 수 있는 체크리스트 섹션.
-- **Final Verdict (결론)**: 명확한 결론과 행동 유도(CTA).
-- **Ticker (선택적)**: 주제가 속보성이거나 데이터 중심일 경우에만 하단에 흐르는 티커 바(Moving Ticker) 추가.
+### 📝 본문 작성 원칙
+- **현재 시점 정보**: 현재 날짜는 {current_date} 입니다. 글의 맥락이 현재 시점을 다룬다면 이 날짜를 기준으로 내용을 작성하세요. (예: 2024년이 아닌 2026년 정보 반영)
+- **감성적 후킹**: 제목(title)과 도입부(Intro)에서 독자의 시선을 즉시 사로잡는 강력한 후킹을 사용하세요.
+- **전문성과 신뢰성**: 단순히 정보 나열이 아닌, 분석적이고 통찰력 있는 문체를 유지하세요.
+- **풍부한 분량**: 각 섹션은 충분한 설명과 예시를 포함하여 최소 1,000자 이상의 깊이 있는 아티클로 만드세요.
+- **사용자 요청 사항 반영**: {user_notes}
 
-### 5. 기술 규칙 (Extremely Important)
-- **완전한 HTML**: `content` 필드에는 `<!DOCTYPE html>`부터 `</html>`까지 포함된 **완전하고 독립적인 HTML 문서** 전체를 넣으세요.
-- **CSS 포함**: 모든 스타일은 `<head>` 내 `<style>` 태그에 포함하세요. 외부 CSS 금지.
-- **Blogger 호환성**: Blogger(구글 블로그)는 `<script>`를 제거하거나 변형할 수 있으므로, **모든 핵심 디자인과 애니메이션은 Pure CSS(Keyframes 등)로 구현**하세요. 자바스크립트에 의존하지 마세요.
-- **가시성 보장**: `opacity: 0`으로 시작하는 애니메이션을 만들 경우, 애니메이션이 작동하지 않는 환경(스크립트 미실행 등)에서도 본문이 보이도록 `style` 태그 내에서 적절히 처리하세요.
+### ⚠️ 기술적 제약 사항 (절대 준수)
+- **이미지 삽입**: 소스에서 제공된 이미지 플레이스홀더 `[[IMAGE_1]]`, `[[IMAGE_2]]` 등이 있다면 적절한 위치에 삽입하세요. (임의의 외부 URL 사용 금지)
+- **HTML 구조**: 전체 HTML 문서를 반환하되, 반드시 `<title>`, `<tags>`, `<summary>`, `<content>` 태그로 감싸서 반환하세요.
+- **CSS**: 모든 스타일은 시스템에서 주입되므로 별도의 `<style>` 내장이나 `style` 속성 사용을 최소화하고 제공된 클래스명 위주로 사용하세요.
 
 ---
-다음 JSON 형식으로만 응답하세요. 설명이나 서론/결론 없이 오직 JSON만 출력하세요:
-{{
-    "title": "SEO 최적화된 매력적인 제목",
-    "content": "<!DOCTYPE html>...전체 HTML 코드...",
-    "tags": ["태그1", "태그2", ...],
-    "summary": "포스팅 1줄 요약"
-}}
-JSON만 반환하세요."""
+
+### [출력 형식 (구조 필수)]
+반드시 아래 XML 태그 형식을 포함하여 답변하세요:
+
+<title>강력한 제목</title>
+<tags>태그1, 태그2, 태그3, ...</tags>
+<summary>글의 핵심 요약문 (1-2문장)</summary>
+<content>
+<!DOCTYPE html>
+<html lang="{target_language}">
+<head>
+    <meta charset="UTF-8">
+    {category_template}
+</head>
+<body class="{target_language}">
+    <div class="container">
+        <header class="hero">
+            <div class="badge">NEW</div>
+            <h1>제목</h1>
+            <p>서브 타이틀 또는 한 줄 요약</p>
+        </header>
+
+        <article class="content-card">
+            <!-- 본문 내용: section, h2, p, tip-box 등 자유롭게 구성 -->
+        </article>
+    </div>
+</body>
+</html>
+</content>"""
 
 
     # --- Nursery Rhyme (동요) 관련 프롬프트 ---
@@ -590,6 +581,9 @@ JSON만 반환하세요."""
 
     GEMINI_EXTRACT_BLOG_METADATA = """당신은 세계 최고의 블로그 SEO 전문가입니다.
     제시된 블로그 본문(HTML 또는 텍스트)을 분석하여, 검색 엔진 최적화(SEO)에 최적화된 메타데이터를 추출 및 생성해주세요.
+
+    [컨텍스트 정보]
+    - 현재 날짜: {current_date} (본문의 '올해', '내년' 등의 표현을 이 날짜 기준으로 해석하세요)
 
     [블로그 본문]
     {content}

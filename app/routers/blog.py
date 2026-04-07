@@ -3,10 +3,14 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from services.blog_service import blog_service
+from services.source_service import source_service
 from config import config
 import database as db
 import httpx
+import os
+import uuid
 from urllib.parse import urlencode
+from fastapi import UploadFile, File
 
 router = APIRouter(prefix="/api/blog", tags=["Blog"])
 
@@ -16,6 +20,8 @@ class BlogMetadataAnalysisRequest(BaseModel):
 class IndependentBlogGenerateRequest(BaseModel):
     topic: str
     platforms: List[dict]
+    category: Optional[str] = None
+    source_content: Optional[str] = "" # NotebookLM 스타일 학습 자료 통합본
 
 BLOGGER_SCOPES = "https://www.googleapis.com/auth/blogger"
 
@@ -113,6 +119,38 @@ async def account_oauth_status(account_id: int):
     return {"connected": connected, "name": acc["name"], "blog_id": acc.get("blog_id")}
 
 
+# ============ NotebookLM 스타일 소스 추출 API ============
+
+class SourceExtractRequest(BaseModel):
+    type: str # 'url', 'youtube', 'file'
+    value: str # URL 또는 파일 경로
+
+@router.post("/extract-source")
+async def extract_source(req: SourceExtractRequest):
+    """URL, 유튜브, 파일에서 텍스트 추출"""
+    result = await source_service.extract_content(req.type, req.value)
+    return result
+
+@router.post("/upload-source-file")
+async def upload_source_file(file: UploadFile = File(...)):
+    """학습용 파일(PDF, TXT) 업로드 및 경로 반환"""
+    try:
+        os.makedirs("temp_sources", exist_ok=True)
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.pdf', '.txt', '.md']:
+            return {"status": "error", "message": "지원하지 않는 파일 형식입니다. (PDF, TXT만 가능)"}
+        
+        file_path = os.path.join("temp_sources", f"{uuid.uuid4()}{ext}")
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+            
+        return {"status": "ok", "file_path": file_path, "original_name": file.filename}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ============ 블로그 생성 API ============
+
 class BlogGenerateRequest(BaseModel):
     source_type: str
     source_value: str
@@ -120,6 +158,7 @@ class BlogGenerateRequest(BaseModel):
     blog_style: str = "review"
     language: str = "ko"
     user_notes: str = ""
+    category: Optional[str] = None
  
 class BlogTranslateRequest(BaseModel):
     title: str
@@ -150,6 +189,7 @@ class BlogAutoProcessRequest(BaseModel):
     blog_style: str = "review"
     language: str = "ko"
     user_notes: str = ""
+    category: Optional[str] = None
     script: Optional[str] = None
 
 @router.post("/auto-process/{project_id}")
@@ -162,7 +202,8 @@ async def auto_process_blog(project_id: int, req: BlogAutoProcessRequest):
             blog_style=req.blog_style,
             language=req.language,
             user_notes=req.user_notes,
-            raw_script=req.script
+            raw_script=req.script,
+            category=req.category
         )
         return result
     except Exception as e:
@@ -178,7 +219,8 @@ async def generate_blog(req: BlogGenerateRequest):
             platform=req.platform,
             blog_style=req.blog_style,
             language=req.language,
-            user_notes=req.user_notes
+            user_notes=req.user_notes,
+            category=req.category
         )
         return result
     except Exception as e:
@@ -222,11 +264,12 @@ class BlogImageGenerateRequest(BaseModel):
     content: str
     project_id: Optional[int] = None
     image_count: int = 2
+    no_human: bool = True # [추가] 사람 제거 옵션
 
 @router.post("/generate-images")
 async def generate_blog_images(req: BlogImageGenerateRequest):
     """기존 글(HTML/텍스트)에 어울리는 이미지를 자동 생성하여 삽입"""
-    result = await blog_service.add_images_to_content(req.content, req.project_id, req.image_count)
+    result = await blog_service.add_images_to_content(req.content, req.project_id, req.image_count, req.no_human)
     return result
 
 @router.post("/analyze-metadata")
@@ -241,26 +284,32 @@ async def post_blog(req: BlogPostRequest):
     results = {}
     platforms = req.platforms or ["wordpress"]
     platform_langs = req.platform_langs or {}
+    processed_content = req.content # 대표 본문 (텔레그램 등에서 사용)
 
-    # 1. 사전 처리: 로컬 이미지(/output/)를 WP에 한 번만 업로드하여 공개 URL로 치환
-    # 다중 콘텐츠가 있는 경우 각각에 대해 처리
+    # 1. 사전 처리: 로컬 이미지(/output/)를 WP에 한 번만 업로드하여 공개 URL로 치환 (모든 탭 공통)
+    # 탭별 독립 콘텐츠(req.contents)가 있는 경우와 기본 본문(req.content) 모두 처리
     if req.contents:
         for p_id in req.contents:
             try:
+                # 모든 탭의 로컬 경로를 WP URL로 미리 치환
                 req.contents[p_id] = await blog_service.upload_local_images_to_public(req.contents[p_id])
             except Exception as e:
                 print(f"[BlogPost] Image pre-upload error for {p_id}: {e}")
-    else:
-        try:
-            req.content = await blog_service.upload_local_images_to_public(req.content)
-            print(f"[BlogPost] Image pre-upload done (legacy)")
-        except Exception as img_err:
-            print(f"[BlogPost] Image pre-upload error: {img_err}")
+    
+    # 기본 본문도 치환 (Blogger 번역용 원본으로 사용될 수 있음)
+    try:
+        req.content = await blog_service.upload_local_images_to_public(req.content)
+        processed_content = req.content
+        print(f"[BlogPost] Primary content image pre-upload done")
+    except Exception as img_err:
+        print(f"[BlogPost] Primary image pre-upload error: {img_err}")
 
     # 2. 플랫폼별 게시
-    # 'wordpress' 처리
+    # [하이브리드 게시 엔진: 워드프레스 선행 + 다국어 병렬]
+    # 1. 워드프레스 선제 게시 (모든 포스팅의 영구 이미지 URL 기준점 확보)
     if "wordpress" in platforms:
         try:
+            print(f"[BlogPost] Step 1: Posting to WordPress First (Image URL Base)...")
             # 탭별 독립 콘텐츠가 있으면 그것을 우선 사용
             if req.contents and "wordpress" in req.contents:
                 final_content = req.contents["wordpress"]
@@ -269,43 +318,30 @@ async def post_blog(req: BlogPostRequest):
                 final_tags = m.get("tags") or req.tags
                 final_categories = m.get("category", "").split(',') if m.get("category") else req.categories
                 final_summary = m.get("summary") or req.summary
-                print(f"[BlogPost] Using direct HTML for WordPress")
-            else:
-                # 레거시: 번역 플로우
-                target_lang = platform_langs.get("wordpress", "ko")
-                final_title, final_content = req.title, req.content
-                final_tags = req.tags
-                final_categories = req.categories
-                final_summary = req.summary
-                
-                if target_lang != "ko":
-                    print(f"[BlogPost] Translating for WordPress to {target_lang}")
-                    trans_res = await blog_service.translate_blog(req.title, req.content, target_lang, summary=req.summary)
-                    if trans_res.get("status") == "ok":
-                        final_title = trans_res["title"]
-                        final_content = trans_res["content"]
-                        final_summary = trans_res.get("summary")
-                
-            res = await blog_service.post_to_wordpress(
+            # 워드프레스 게시 전 본문의 로컬 이미지들을 워드프레스 미디어 라이브러리로 확실히 변환
+            final_content = await blog_service.upload_local_images_to_public(final_content)
+            
+            w_res = await blog_service.post_to_wordpress(
                 title=final_title, 
                 content=final_content, 
                 tags=final_tags, 
                 categories=final_categories,
                 summary=final_summary
             )
-            results["wordpress"] = res
+            results["wordpress"] = w_res
+            # 워드프레스 게시 성공 시 본문에서 최종 WP URL 이미지들 추출 (중요!)
+            if w_res.get("status") == "ok":
+               source_images = blog_service.extract_image_tags(final_content)
+               print(f"[BlogPost] WP Success! Global images extracted: {len(source_images)}")
         except Exception as e:
+            print(f"[BlogPost] WordPress posting failed (Step 1): {e}")
             results["wordpress"] = {"status": "error", "error": str(e)}
 
-    # 'blogger' 처리 (다중 계정 선택 지원)
-    # 0. 공통 이미지 추출 (워드프레스용 최종 본문에서 추출하거나 한 번만 수행)
-    source_images = []
-    if "wordpress" in platforms and req.contents and "wordpress" in req.contents:
-        source_images = blog_service.extract_image_tags(req.contents["wordpress"])
-    elif "wordpress" in platforms:
-        source_images = blog_service.extract_image_tags(req.content) # req.content는 이미 upload_local 되어있음
-    
-    # platforms 리스트에 'blogger' (전체) 또는 'blogger:123' (개별) 형식이 포함될 수 있음
+    # WP 게시 후에도 이미지가 없으면 기본 본문에서 추출 시도 (Fallback)
+    if not source_images:
+        source_images = blog_service.extract_image_tags(req.content)
+
+    # 2. 다국어 Blogger 계정 병렬 게시 (비동기 엔진 가동)
     selected_blogger_ids = []
     for p in platforms:
         if p == "blogger":
@@ -313,66 +349,68 @@ async def post_blog(req: BlogPostRequest):
             selected_blogger_ids.extend([str(a["id"]) for a in accounts if a.get("refresh_token")])
         elif p.startswith("blogger:"):
             selected_blogger_ids.append(p.split(":")[1])
+        elif p.startswith("blogger_"):
+            selected_blogger_ids.append(p.split("_")[1])
 
     if selected_blogger_ids:
+        import asyncio
         selected_blogger_ids = list(set(selected_blogger_ids))
         accounts = db.get_blogger_accounts()
         connected_accounts = [a for a in accounts if str(a.get("id")) in selected_blogger_ids and a.get("refresh_token")]
         
         if not connected_accounts:
-            results["blogger"] = {"status": "error", "error": "선택된 계정 중 연동된 구글 블로그 계정이 없습니다."}
+            results["blogger"] = {"status": "error", "error": "연동된 구글 블로그 계정이 없습니다."}
         else:
-            for acc in connected_accounts:
+            async def post_single_blogger(acc):
                 acc_id = acc["id"]
                 acc_name = acc["name"]
                 p_key = f"blogger:{acc_id}"
+                p_key_alt = f"blogger_{acc_id}"
                 
                 try:
-                    m = {} # 메타데이터 초기화
-                    # 탭별 독립 콘텐츠가 있으면 그것을 우선 사용
-                    if req.contents and p_key in req.contents:
-                        final_content = req.contents[p_key]
+                    target_lang = platform_langs.get(p_key) or platform_langs.get(p_key_alt) or acc.get("lang") or "ja"
+                    print(f"[Parallel] Posting {acc_name} ({target_lang})...")
+
+                    if req.contents and (p_key in req.contents or p_key_alt in req.contents):
+                        f_content = req.contents.get(p_key) or req.contents.get(p_key_alt)
+                        m_data = (req.metadata.get(p_key) or req.metadata.get(p_key_alt, {})) if req.metadata else {}
+                        f_title = m_data.get("title") or req.title
+                        f_tags = m_data.get("tags") or req.tags
+                        f_summary = m_data.get("summary") or req.summary
+                        f_category = m_data.get("category") or (req.categories[0] if req.categories else "")
                         
-                        # [핵심] 일어/영어 직접 입력 탭인 경우 워드프레스 이미지만 삽입
-                        if (acc.get("lang") or "ja") != "ko":
-                            print(f"[BlogPost] Injecting source images into manual content for {acc_name}")
-                            final_content = blog_service.inject_images_into_content(final_content, source_images)
-                        
-                        m = req.metadata.get(p_key, {}) if req.metadata else {}
-                        final_title = m.get("title") or req.title
-                        final_tags = m.get("tags") or req.tags
-                        final_summary = m.get("summary") or req.summary
+                        if source_images:
+                            f_content = blog_service.inject_images_into_content(f_content, source_images)
                     else:
-                        # ... (이후 레거시 코드)
-                        # 레거시: 번역 플로우
-                        target_lang = platform_langs.get(f"blogger_{acc_id}") or acc.get("lang") or "ja"
-                        final_title, final_content = req.title, req.content
-                        final_tags = req.tags
-                        final_summary = req.summary
-                        
+                        # 실시간 번역 모드
+                        f_title, f_content = req.title, req.content
+                        f_tags, f_summary = req.tags, req.summary
                         if target_lang != "ko":
-                            trans_res = await blog_service.translate_blog(req.title, req.content, target_lang, summary=req.summary, category=req.categories[0] if req.categories else None)
-                            if trans_res.get("status") == "ok":
-                                final_title = trans_res["title"]
-                                final_content = trans_res["content"]
-                                final_summary = trans_res.get("summary")
-                                final_category = trans_res.get("category")
-                            else:
-                                final_category = req.categories[0] if req.categories else ""
-                        else:
-                            final_category = req.categories[0] if req.categories else ""
-                    
+                            trans = await blog_service.translate_blog(req.title, req.content, target_lang, summary=req.summary)
+                            if trans.get("status") == "ok":
+                                f_title, f_content = trans["title"], trans["content"]
+                                f_summary = trans.get("summary")
+                        f_category = req.categories[0] if req.categories else ""
+                        if source_images:
+                            f_content = blog_service.inject_images_into_content(f_content, source_images)
+
                     res = await blog_service.post_to_blogger(
-                        title=final_title, 
-                        content=final_content, 
-                        tags=final_tags, 
-                        account_id=acc_id,
-                        summary=final_summary,
-                        category=m.get("category") if (req.contents and p_key in req.contents) else final_category
+                        title=f_title, content=f_content, tags=f_tags, account_id=acc_id,
+                        summary=f_summary, category=f_category, image_tags=source_images
                     )
-                    results[f"blogger_{acc_id}"] = {**res, "account_name": acc_name}
+                    print(f"[Parallel] {acc_name} DONE: {res.get('status')}")
+                    return f"blogger_{acc_id}", {**res, "account_name": acc_name}
                 except Exception as e:
-                    results[f"blogger_{acc_id}"] = {"status": "error", "error": str(e), "account_name": acc_name}
+                    print(f"[Parallel] {acc_name} FAILED: {e}")
+                    return f"blogger_{acc_id}", {"status": "error", "error": str(e), "account_name": acc_name}
+
+            # 7개(?) 이상의 계정을 동시에 병렬 실행
+            print(f"[BlogPost] Step 2: Parallel posting to {len(connected_accounts)} Blogger accounts...")
+            parallel_results = await asyncio.gather(*[post_single_blogger(acc) for acc in connected_accounts])
+            for key, val in parallel_results:
+                results[key] = val
+
+    # 'telegram' 처리
 
     # 'telegram' 처리
     # platforms list에서 'telegram' 또는 'telegram:{chat_id}' 형식을 모두 찾음
@@ -595,8 +633,10 @@ async def generate_independent_multi(req: IndependentBlogGenerateRequest):
     if not req.topic:
         raise HTTPException(status_code=400, detail="주제가 없습니다.")
     
+    # NotebookLM 스타일 학습 자료(source_content) 전달
     res = await blog_service.generate_independent_multi_language_blogs(
         topic=req.topic,
-        platforms=req.platforms
+        platforms=req.platforms,
+        source_content=req.source_content # 추가됨
     )
     return res

@@ -34,7 +34,8 @@ class PublishService:
 2. 각 이미지는 해당 문단의 내용을 시각적으로 보여줄 수 있어야 합니다.
 3. 이미지 프롬프트는 Imagen/DALL-E에서 생성할 수 있도록 영어로 작성합니다.
 4. 비율은 16:9 (가로형, 블로그+영상 공용)
-5. 사실적인 스타일 (photorealistic) 기본, 주제에 따라 일러스트 가능
+5. 사실적인 스타일 (photorealistic) 또는 전문적인 일러스트레이션.
+6. **절대 금지**: 이미지에 사람(human), 인물의 얼굴, 신체 부위가 나타나지 않도록 하세요. 대신 사물, 풍경, 데이터 시각화, 테크놀로지 심볼 등으로 표현하세요.
 
 ## 블로그 글:
 {content[:8000]}
@@ -88,9 +89,9 @@ class PublishService:
                 after_text = img.get('after_paragraph', '').strip()
                 
                 img_html = (
-                    f'\n<figure style="text-align:center;margin:20px 0;">'
-                    f'<img src="{img_url}" alt="{caption}" style="max-width:100%;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1);">'
-                    f'</figure>\n'
+                    f'\n<div style="text-align:center !important; margin:3.5rem auto !important; width:100% !important; display:block !important; clear:both !important;">'
+                    f'<img src="{img_url}" alt="{caption}" style="width:92% !important; max-width:800px !important; height:auto !important; border-radius:18px; box-shadow:0 20px 45px rgba(0,0,0,0.12); display:block !important; margin:0 auto !important;">'
+                    f'</div>\n'
                 )
                 
                 inserted = False
@@ -106,13 +107,15 @@ class PublishService:
                 
                 if not inserted:
                     pos = img.get('position', 1)
-                    p_matches = list(re.finditer(r'</(p|div|h[1-4]|li|section|article)>|<br\s*/?>', processed_content, re.IGNORECASE))
+                    p_matches = list(re.finditer(r'</(p|div|h[1-4]|li|section|article|blockquote)>|<br\s*/?>|\n\n', processed_content, re.IGNORECASE))
                     if p_matches:
                         target_idx = min(len(p_matches) - 1, max(0, pos - 1))
                         insert_pos = p_matches[target_idx].end()
                         processed_content = processed_content[:insert_pos] + img_html + processed_content[insert_pos:]
+                        inserted = True
                     else:
                         processed_content += img_html
+                        inserted = True
             
             return processed_content
 
