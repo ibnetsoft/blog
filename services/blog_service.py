@@ -1,6 +1,8 @@
 import os
+import re
 import json
 import httpx
+import asyncio
 from typing import Optional, Dict, Any, List
 from services.source_service import source_service
 from services.gemini_service import gemini_service
@@ -150,7 +152,7 @@ class BlogService:
         try:
             from services.publish_service import publish_service
             # 1. 이미지 포인트 분석 (publish_service 연동)
-            image_points = await publish_service.analyze_image_points(content)
+            image_points = await publish_service.analyze_image_points(content, image_count=image_count, no_human=no_human)
             
             # 2. 이미지 생성 및 저장
             generated_images = []
@@ -416,6 +418,25 @@ class BlogService:
 
         return processed
 
+    def extract_body_content(self, html_content: str) -> str:
+        """HTML 문서에서 body 태그 또는 <html> 태그를 안전하게 걷어내고 본문만 추출 (WordPress 레이아웃 보호)"""
+        import re
+        
+        # 1. 스타일(style) 태그 보존을 위해 별도 추출
+        style_match = re.search(r'(<style[\s\S]*?</style>)', html_content, re.IGNORECASE)
+        styles = style_match.group(1) if style_match else ""
+        
+        # 2. <body> 태그 내부 추출
+        body_match = re.search(r'<body[^>]*>([\s\S]*?)</body>', html_content, re.IGNORECASE)
+        if body_match:
+            content = body_match.group(1).strip()
+            return f"{styles}\n{content}"
+        
+        # 3. <body>가 없으면 <html>, <head> 등만 단순 제거 (위태로운 div 정규식 제거)
+        clean_content = re.sub(r'<!DOCTYPE[^>]*>|<html>|</html>|<head>[\s\S]*?</head>|<body>|</body>', '', html_content, flags=re.IGNORECASE).strip()
+            
+        return f"{styles}\n{clean_content}"
+
     async def post_to_wordpress(
         self,
         title: str,
@@ -455,41 +476,35 @@ class BlogService:
 
             # 1. 이미지 및 리소스 업로드 (로컬 경로 /output/ 이미지를 공개 URL로 치환)
             content = await self.upload_local_images_to_public(content)
-            processed_content = content
+            
+            # [FIX] 워드프레스 레이아웃 깨짐 방지: <html>, <body> 태그 등이 있으면 본문만 추출
+            processed_content = self.extract_body_content(content)
 
-            # <style> 블록이 포함된 HTML은 WordPress 블록 에디터의 Custom HTML 블록으로 감싸기
-            # WordPress REST API가 <style> 태그를 strip하지 않도록 보호
+            # 2. 카테고리/태그 메타데이터 생성 (SEO 및 정보 제공용)
+            meta_footer = ""
+            if categories and any(isinstance(c, str) for c in categories):
+                meta_footer += "\n\n<p><strong>Category:</strong> " + ", ".join([str(c) for c in categories]) + "</p>"
+            
+            if tags:
+                meta_footer += "\n\n<p><strong>Tags:</strong> " + " ".join([f"#{t}" for t in tags]) + "</p>"
+
+            # [FIX] 스타일이 있는 경우 Gutenberg HTML 블록으로 감싸기 (메타데이터 포함)
             import re
             if re.search(r'<style[\s\S]*?</style>', processed_content, re.IGNORECASE):
-                # Gutenberg Custom HTML 블록으로 래핑
-                processed_content = f'<!-- wp:html -->\n{processed_content}\n<!-- /wp:html -->'
+                # 스타일과 본문, 그리고 메타데이터를 모두 블록 안에 넣음
+                processed_content = f'<!-- wp:html -->\n{processed_content}{meta_footer}\n<!-- /wp:html -->'
+            else:
+                # 스타일이 없으면 일반 텍스트로 추가
+                processed_content += meta_footer
 
             payload = {
                 "title": title,
                 "content": processed_content,
                 "status": "publish",
-                "categories": categories or []
+                "categories": [] # ID가 아닌 경우 비움
             }
             if summary:
                 payload["excerpt"] = summary
-
-            # 카테고리 처리 (워드프레스는 ID 배열을 받으므로, 문자열인 경우 이름으로 매칭 시도 가능하지만 
-            # 여기서는 간단히 카테고리 이름을 본문 하단에 표시하여 SEO 지원)
-            if categories and any(isinstance(c, str) for c in categories):
-                payload["categories"] = [] # ID가 아니면 비움
-                cat_text = "\n\nCategory: " + ", ".join([str(c) for c in categories])
-                payload["content"] += cat_text
-            
-            # 태그 처리 (워드프레스는 태그 ID 배열을 받음)
-            tag_ids = []
-            if tags:
-                try:
-                    # 간단하게 태그를 이름으로 게시하고 싶지만 WP REST API는 ID만 받으므로
-                    # 태그 이름들을 content 하단에 해시태그로 추가하거나, 추후 태그 생성 로직 추가 가능
-                    footer_tags = "\n\n" + " ".join([f"#{t}" for t in tags])
-                    payload["content"] += footer_tags
-                except:
-                    pass
 
             async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
                 res = await client.post(endpoint, json=payload, headers=headers, timeout=30)
@@ -565,17 +580,32 @@ class BlogService:
                 "Content-Type": mime_type
             }
 
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                res = await client.post(endpoint, content=image_data, headers=headers, timeout=60)
-                if res.status_code in [200, 201]:
-                    data = res.json()
-                    return {
-                        "status": "ok",
-                        "media_id": data.get("id"),
-                        "url": data.get("source_url", data.get("guid", {}).get("rendered", "")),
-                    }
-                else:
-                    return {"status": "error", "error": f"WordPress 이미지 업로드 실패 ({res.status_code}): {res.text[:200]}"}
+            max_retries = 3
+            last_error = ""
+
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient(follow_redirects=True) as client:
+                        res = await client.post(endpoint, content=image_data, headers=headers, timeout=120)
+                        if res.status_code in [200, 201]:
+                            data = res.json()
+                            print(f"[WordPress] Image upload success on attempt {attempt + 1}")
+                            return {
+                                "status": "ok",
+                                "media_id": data.get("id"),
+                                "url": data.get("source_url", data.get("guid", {}).get("rendered", "")),
+                            }
+                        else:
+                            last_error = f"WordPress 이미지 업로드 실패 ({res.status_code}): {res.text[:200]}"
+                            print(f"[WordPress] Upload failed (attempt {attempt + 1}): {last_error}")
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"[WordPress] Upload error (attempt {attempt + 1}): {last_error}")
+                
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2) # 2초 대기 후 재시도
+
+            return {"status": "error", "error": f"WordPress 업로드 최종 실패 ({max_retries}회 시도): {last_error}"}
 
         except Exception as e:
             print(f"upload_image_to_wordpress Error: {e}")
@@ -652,22 +682,23 @@ class BlogService:
   opacity: 1 !important;
   position: relative !important;
   width: 100% !important;
-  max-width: 800px !important; /* 본문 최대 너비 제한 */
+  max-width: 820px !important; /* [Fix] 820px로 본문 영역 제한하여 중앙 정렬 유도 */
   margin: 0 auto !important;
-  padding: 3rem 2.5rem !important;
-  padding-top: 2rem !important;
-  background-color: #ffffff !important;
-  border-radius: 20px !important;
+  padding: 1.5rem 0 !important;
+  background-color: transparent !important;
   box-sizing: border-box !important;
-  overflow: hidden !important; /* 내용물(사진 등)이 밖으로 나가는 것을 물리적으로 차단 */
+  overflow: visible !important;
   z-index: 1 !important;
 }
 .bp-wrap * {
   box-sizing: border-box !important;
-  max-width: 100% !important; /* 모든 요소가 본문 폭을 넘지 못하게 함 */
+  max-width: 100% !important;
 }
-.bp-wrap figure, .bp-wrap div[style*="text-align:center"] {
-  display: block !important;
+.bp-wrap figure, .bp-wrap div.premium-blog-image, .bp-wrap div[style*="text-align:center"] {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
   text-align: center !important;
   margin: 3.5rem auto !important;
   width: 100% !important;
@@ -675,12 +706,12 @@ class BlogService:
 }
 .bp-wrap img {
   display: block !important;
-  width: 92% !important;
-  max-width: 800px !important;
+  width: 85% !important; /* [Fix] 너무 큰 이미지 크기 85%로 축소 */
+  max-width: 680px !important; /* [Fix] 절대적인 너비 680px로 제한 */
   height: auto !important;
-  margin: 0 auto !important; /* 부모가 center인 경우 margin-top/bottom 배제하고 정렬에 집중 */
-  border-radius: 18px !important;
-  box-shadow: 0 20px 45px rgba(0,0,0,0.12) !important;
+  margin: 0 auto !important;
+  border-radius: 20px !important;
+  box-shadow: 0 15px 45px rgba(0,0,0,0.08) !important;
   object-fit: contain !important;
 }
 /* 가독성 패치: 배경과 글자색의 선명한 대비(Contrast) 확보 */
@@ -750,10 +781,14 @@ class BlogService:
   display: block !important;
   min-height: auto !important;
 }
-.bp-wrap .container, .bp-wrap .content-card {
-  max-width: 100% !important;
-  width: 100% !important;
-  padding: 0 0.5rem 0.5rem !important; /* 상단 패딩 제거 */
+.bp-wrap .container, .bp-wrap .content-card, .bp-wrap article {
+  max-width: 780px !important; /* [Fix] .bp-wrap 내부의 요소에만 엄격하게 적용 */
+  width: 94% !important;
+  margin: 0 auto !important;
+  padding: 2.5rem 2rem !important;
+  background-color: #ffffff !important;
+  border-radius: 24px !important;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.05) !important;
 }
 """
         scoped_css += force_visible
@@ -857,7 +892,8 @@ class BlogService:
             if isinstance(tags, list):
                 full_labels.extend(tags)
             elif isinstance(tags, str):
-                full_labels.extend([t.strip() for t in tags.split(',') if t.strip()])
+                # 영어 쉼표(,)와 아랍어 쉼표(،) 모두 지원
+                full_labels.extend([t.strip() for t in re.split(r'[,،]', tags) if t.strip()])
             
             if category:
                 # 카테고리(단일/콤마구상)를 라벨 목록에 추가
@@ -872,10 +908,18 @@ class BlogService:
                     if not label: continue
                     # Remove characters that Blogger might reject as invalid arguments
                     # Commas are strictly forbidden within a single label string in some API contexts
-                    clean_label = label.replace(',', ' ').strip()
+                    # 영어 쉼표와 아랍어 쉼표 모두 공백으로 제거 (Blogger 라벨은 쉼표 불허)
+                    clean_label = re.sub(r'[,،]', ' ', label)
+                    
+                    # BiDi 제어 문자 및 기타 비인쇄 문자 제거 (아랍어 번역 시 혼입 가능성)
+                    clean_label = re.sub(r'[\u200e\u200f\u202a-\u202e]', '', clean_label)
+                    
                     # Remove problematic HTML-like characters from labels
                     for char in '<>{}[]~':
                         clean_label = clean_label.replace(char, '')
+                    
+                    # 연속된 공백 정리
+                    clean_label = re.sub(r'\s+', ' ', clean_label).strip()
                     
                     if len(clean_label) > 200: # Blogger limit
                         clean_label = clean_label[:197] + "..."

@@ -640,3 +640,56 @@ async def generate_independent_multi(req: IndependentBlogGenerateRequest):
         source_content=req.source_content # 추가됨
     )
     return res
+
+@router.post("/upload-image")
+async def upload_blog_image(file: UploadFile = File(...)):
+    """로컬 이미지를 업로드하여 워드프레스 미디어 라이브러리에 저장하고 HTML 반환"""
+    try:
+        import os
+        import uuid
+        import shutil
+        from services.blog_service import blog_service
+        
+        print(f"[API] Image upload started: {file.filename}")
+        
+        # 1. 임시 저장
+        temp_dir = "temp_uploads"
+        os.makedirs(temp_dir, exist_ok=True)
+        ext = os.path.splitext(file.filename)[1].lower()
+        if not ext: ext = ".png"
+        
+        temp_path = os.path.join(temp_dir, f"{uuid.uuid4()}{ext}")
+        
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # 2. WordPress 미디어 라이브러리 업로드
+        print(f"  - Uploading to WordPress Media Library...")
+        wp_res = await blog_service.upload_image_to_wordpress(temp_path)
+        
+        # 3. 임시 파일 삭제
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        if wp_res.get("status") == "ok":
+            img_url = wp_res["url"]
+            print(f"  - Upload Success: {img_url}")
+            # 프리미엄 이미지 HTML 생성 (Blogger/WP 공용 레이아웃)
+            img_html = (
+                f'\n<div class="premium-blog-image" style="display:flex !important; flex-direction:column !important; align-items:center !important; justify-content:center !important; margin:3.5rem auto !important; clear:both !important; width:100% !important;">'
+                f'<figure style="display:block !important; margin:0 auto !important; max-width:88% !important; text-align:center !important;">'
+                f'<img src="{img_url}" alt="Uploaded Image" style="max-width:100% !important; width:100% !important; height:auto !important; border-radius:22px; box-shadow:0 18px 45px rgba(0,0,0,0.1); display:block !important; margin:0 auto !important;">'
+                f'</figure>'
+                f'</div>\n'
+            )
+            return {"status": "ok", "url": img_url, "html": img_html}
+        else:
+            err_msg = wp_res.get("error", "이미지 업로드 실패")
+            print(f"  - Upload Failed: {err_msg}")
+            return {"status": "error", "error": err_msg}
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[API] Upload critical error: {e}")
+        return {"status": "error", "error": f"서버 내부 오류: {str(e)}"}

@@ -1,46 +1,49 @@
-import asyncio
-import httpx
-from services.blog_service import blog_service
-from config import config
-import database as db
+import re
 
-async def test_blogger_with_bad_tags():
-    # Attempt to post with tags that need sanitization
-    account_id = 1
-    acc = db.get_blogger_account(account_id)
-    if not acc:
-        print("Account 1 not found")
-        return
+def test_label_cleaning(tags_str):
+    # Simulate the logic in post_to_blogger
+    full_labels = []
+    
+    # 영어 쉼표(,)와 아랍어 쉼표(،) 모두 지원
+    full_labels.extend([t.strip() for t in re.split(r'[,،]', tags_str) if t.strip()])
+    
+    print(f"Original tags: '{tags_str}'")
+    print(f"Split labels: {full_labels}")
+    
+    safe_labels = []
+    for label in full_labels:
+        if not label: continue
+        
+        # 영어 쉼표와 아랍어 쉼표 모두 공백으로 제거
+        clean_label = re.sub(r'[,،]', ' ', label)
+        
+        # BiDi 제어 문자 제거
+        clean_label = re.sub(r'[\u200e\u200f\u202a-\u202e]', '', clean_label)
+        
+        # 특수 문자 제거
+        for char in '<>{}[]~':
+            clean_label = clean_label.replace(char, '')
+            
+        # 연속된 공백 정리
+        clean_label = re.sub(r'\s+', ' ', clean_label).strip()
+        
+        if len(clean_label) > 200:
+            clean_label = clean_label[:197] + "..."
+            
+        if clean_label and clean_label not in safe_labels:
+            safe_labels.append(clean_label)
+            
+    print(f"Safe labels: {safe_labels}")
+    return safe_labels
 
-    print(f"Verifying Blogger fix for account: {acc['name']} (ID: {acc['id']})")
-    print(f"Blog ID: {acc.get('blog_id')}")
-    
-    title = "Verify Fix Post " + config.get_kst_time().strftime("%Y-%m-%d %H:%M:%S")
-    content = "<p>This is a verification post to ensure labels are sanitized and payload is simplified.</p>"
-    # Tags with commas, special chars, and long strings
-    tags = "tag1,tag2,tag3"
-    
-    print("Calling post_to_blogger...")
-    try:
-        res = await asyncio.wait_for(blog_service.post_to_blogger(
-            title=title,
-            content=content,
-            tags=tags,
-            account_id=account_id,
-            category="category,with,commas"
-        ), timeout=60)
-    except asyncio.TimeoutError:
-        print("Timeout calling post_to_blogger")
-        return
-    except Exception as e:
-        print(f"Exception during post_to_blogger: {e}")
-        return
-    
-    print(f"Result: {res}")
-    if res.get("status") == "ok":
-        print("SUCCESS: Sanitization worked, post created.")
-    else:
-        print(f"FAILED: {res.get('error')}")
+# Test 1: Arabic labels with Arabic commas
+test_label_cleaning("الشهر، الحوثيون، اليمن، الحرب الأهلية")
 
-if __name__ == "__main__":
-    asyncio.run(test_blogger_with_bad_tags())
+# Test 2: Mixed labels
+test_label_cleaning("Houthi, اليمن، Security, الحرب")
+
+# Test 3: Labels with BiDi controls (simulated)
+test_label_cleaning("Tag1\u200e, Tag2\u200f")
+
+# Test 4: Labels with multiple spaces and special chars
+test_label_cleaning("Tag [1] ,  Tag ~ 2 ")

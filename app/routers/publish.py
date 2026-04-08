@@ -339,6 +339,14 @@ async def upload_images_to_wordpress(session_id: int):
             else:
                 results.append({"id": img["id"], "status": "error", "reason": wp_result.get("error", "")})
 
+        # 모든 업로드 처리 후, 세션의 HTML 본문도 새 공개 URL로 업데이트 (미리보기 동기화)
+        session = db.get_publish_session(session_id)
+        if session:
+            updated_images = db.get_publish_images(session_id)
+            new_html = publish_service.build_blog_html(session["content"], updated_images)
+            db.update_publish_session(session_id, content_html=new_html)
+            print(f"[Publish] Session {session_id} HTML rebuilt with public URLs")
+
         return {"status": "ok", "results": results}
     except Exception as e:
         return {"status": "error", "error": str(e)}

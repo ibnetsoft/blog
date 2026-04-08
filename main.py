@@ -236,16 +236,26 @@ def start_browser():
     webbrowser.open(url)
 
 if __name__ == "__main__":
-    print("=" * 50)
-    print("  SNS 자동화 앱 시작 (SNS Studio)")
-    print("=" * 50)
+    print("\n" + "=" * 60)
+    print("  🚀 SNS Studio - 블로그 자동화 시스템")
+    print("-" * 60)
+    print(f"  ● 접속 주소: http://127.0.0.1:{config.PORT}")
+    print(f"  ● 환경 설정: {'디버그(DEBUG)' if config.DEBUG else '운영(PRODUCTION)'}")
+    print(f"  ● 출력 경로: {config.OUTPUT_DIR}")
+    print("-" * 60)
+    print("  ※ 이미지가 업로드되지 않을 경우 브라우저 포트를 확인하세요!")
+    print("=" * 60 + "\n")
     
     # 서버 실행 직전 타이머 작동 (2초 후 브라우저 오픈)
     threading.Timer(2.0, start_browser).start()
     
+    # 실행 파일(.exe)에서는 reload=True가 동작하지 않으므로 강제 비활성화
+    is_frozen = getattr(sys, 'frozen', False)
+    
     uvicorn.run(
-        app,
+        "main:app" if not is_frozen else app,
         host=config.HOST,
         port=config.PORT,
-        reload=config.DEBUG,
+        reload=config.DEBUG and not is_frozen,
+        workers=1,
     )
