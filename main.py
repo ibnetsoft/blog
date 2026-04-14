@@ -200,13 +200,11 @@ async def update_global_setting(body: Dict[str, Any]):
 
 @app.get("/api/health")
 async def health_check():
+    from services.blog_service import blog_service
+    health_results = await blog_service.check_all_api_connections()
     return {
         "status": "ok",
-        "apis": {
-            "gemini": bool(config.GEMINI_API_KEY),
-            "wordpress": bool(config.WP_URL and config.WP_USERNAME),
-            "blogger": bool(config.BLOG_CLIENT_ID),
-        }
+        "apis": health_results
     }
 
 
@@ -246,6 +244,40 @@ if __name__ == "__main__":
     print("  ※ 이미지가 업로드되지 않을 경우 브라우저 포트를 확인하세요!")
     print("=" * 60 + "\n")
     
+    # ==========================================
+    # 서버 실행 전 연동 체크
+    # ==========================================
+    async def run_startup_check():
+        from services.blog_service import blog_service
+        print("\n[시스템 초기화] 연동 상태를 확인 중입니다...")
+        health = await blog_service.check_all_api_connections()
+        
+        has_error = False
+        for platform, res in health.items():
+            status_icon = "✅" if res["status"] == "ok" else "❌"
+            print(f"  {status_icon} {platform.upper()}: {res['message']}")
+            if res["status"] != "ok":
+                has_error = True
+        
+        if has_error:
+            print("\n" + "!" * 60)
+            print("  ⚠️ 주의: 일부 서비스가 연결되지 않았습니다.")
+            print("  설정 페이지에서 연동 정보를 다시 확인해 주세요.")
+            print("!" * 60 + "\n")
+        else:
+            print("\n  ✨ 모든 서비스가 정상적으로 연결되었습니다.\n")
+
+    # FastAPI의 이벤트 루프를 사용하여 비동기 체크 실행
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(run_startup_check())
+        else:
+            loop.run_until_complete(run_startup_check())
+    except Exception as e:
+        print(f"연동 체크 중 오류 발생: {e}")
+
     # 서버 실행 직전 타이머 작동 (2초 후 브라우저 오픈)
     threading.Timer(2.0, start_browser).start()
     

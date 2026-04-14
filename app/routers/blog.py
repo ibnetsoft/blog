@@ -307,6 +307,7 @@ async def post_blog(req: BlogPostRequest):
     # 2. 플랫폼별 게시
     # [하이브리드 게시 엔진: 워드프레스 선행 + 다국어 병렬]
     # 1. 워드프레스 선제 게시 (모든 포스팅의 영구 이미지 URL 기준점 확보)
+    source_images = []
     if "wordpress" in platforms:
         try:
             print(f"[BlogPost] Step 1: Posting to WordPress First (Image URL Base)...")
@@ -318,6 +319,13 @@ async def post_blog(req: BlogPostRequest):
                 final_tags = m.get("tags") or req.tags
                 final_categories = m.get("category", "").split(',') if m.get("category") else req.categories
                 final_summary = m.get("summary") or req.summary
+            else:
+                final_content = req.content
+                final_title = req.title
+                final_tags = req.tags
+                final_categories = req.categories
+                final_summary = req.summary
+
             # 워드프레스 게시 전 본문의 로컬 이미지들을 워드프레스 미디어 라이브러리로 확실히 변환
             final_content = await blog_service.upload_local_images_to_public(final_content)
             
@@ -328,7 +336,17 @@ async def post_blog(req: BlogPostRequest):
                 categories=final_categories,
                 summary=final_summary
             )
+            
+            # 리트라이용 페이로드 저장
+            w_res["payload"] = {
+                "title": final_title,
+                "content": final_content,
+                "tags": final_tags,
+                "categories": final_categories,
+                "summary": final_summary
+            }
             results["wordpress"] = w_res
+
             # 워드프레스 게시 성공 시 본문에서 최종 WP URL 이미지들 추출 (중요!)
             if w_res.get("status") == "ok":
                source_images = blog_service.extract_image_tags(final_content)
@@ -364,16 +382,15 @@ async def post_blog(req: BlogPostRequest):
             async def post_single_blogger(acc):
                 acc_id = acc["id"]
                 acc_name = acc["name"]
-                p_key = f"blogger:{acc_id}"
-                p_key_alt = f"blogger_{acc_id}"
+                p_key = f"blogger_{acc_id}" # use underscore for key consistency
                 
                 try:
-                    target_lang = platform_langs.get(p_key) or platform_langs.get(p_key_alt) or acc.get("lang") or "ja"
+                    target_lang = platform_langs.get(f"blogger:{acc_id}") or platform_langs.get(p_key) or acc.get("lang") or "ja"
                     print(f"[Parallel] Posting {acc_name} ({target_lang})...")
 
-                    if req.contents and (p_key in req.contents or p_key_alt in req.contents):
-                        f_content = req.contents.get(p_key) or req.contents.get(p_key_alt)
-                        m_data = (req.metadata.get(p_key) or req.metadata.get(p_key_alt, {})) if req.metadata else {}
+                    if req.contents and (f"blogger:{acc_id}" in req.contents or p_key in req.contents):
+                        f_content = req.contents.get(f"blogger:{acc_id}") or req.contents.get(p_key)
+                        m_data = (req.metadata.get(f"blogger:{acc_id}") or req.metadata.get(p_key, {})) if req.metadata else {}
                         f_title = m_data.get("title") or req.title
                         f_tags = m_data.get("tags") or req.tags
                         f_summary = m_data.get("summary") or req.summary
@@ -398,11 +415,22 @@ async def post_blog(req: BlogPostRequest):
                         title=f_title, content=f_content, tags=f_tags, account_id=acc_id,
                         summary=f_summary, category=f_category, image_tags=source_images
                     )
+                    
+                    # 리트라이용 페이로드 저장
+                    res["payload"] = {
+                        "title": f_title,
+                        "content": f_content,
+                        "tags": f_tags,
+                        "account_id": acc_id,
+                        "summary": f_summary,
+                        "category": f_category,
+                        "image_tags": source_images
+                    }
+                    
                     print(f"[Parallel] {acc_name} DONE: {res.get('status')}")
-                    return f"blogger_{acc_id}", {**res, "account_name": acc_name}
+                    return p_key, {**res, "account_name": acc_name}
                 except Exception as e:
                     print(f"[Parallel] {acc_name} FAILED: {e}")
-                    return f"blogger_{acc_id}", {"status": "error", "error": str(e), "account_name": acc_name}
 
             # 7개(?) 이상의 계정을 동시에 병렬 실행
             print(f"[BlogPost] Step 2: Parallel posting to {len(connected_accounts)} Blogger accounts...")
@@ -494,7 +522,8 @@ async def post_blog(req: BlogPostRequest):
                 title=req.title,
                 status=res.get("status", "error"),
                 message=res.get("error", res.get("message", "")),
-                url=res.get("url", "")
+                url=res.get("url", ""),
+                payload=res.get("payload")
             )
         except Exception as log_err:
             print(f"[LogSave] Error: {log_err}")
@@ -625,6 +654,66 @@ async def get_logs(limit: int = 100):
     """작업 로그 조회"""
     logs = db.get_job_logs(limit)
     return {"status": "ok", "logs": logs}
+
+
+@router.post("/logs/{log_id}/retry")
+async def retry_log(log_id: int):
+    """실패한 로그 재시도"""
+    import json
+    conn = db.get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM job_logs WHERE id = ?", (log_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="로그를 찾을 수 없습니다.")
+    
+    if not row['payload']:
+        raise HTTPException(status_code=400, detail="재시도할 데이터(payload)가 없습니다.")
+
+    try:
+        payload = json.loads(row['payload'])
+        platform = row['platform']
+        
+        result = {"status": "error", "error": f"지원하지 않는 플랫폼: {platform}"}
+
+        if platform == "wordpress":
+            result = await blog_service.post_to_wordpress(
+                title=payload["title"],
+                content=payload["content"],
+                tags=payload.get("tags", []),
+                categories=payload.get("categories", []),
+                summary=payload.get("summary")
+            )
+        elif platform.startswith("blogger"):
+            result = await blog_service.post_to_blogger(
+                title=payload["title"],
+                content=payload["content"],
+                tags=payload.get("tags", []),
+                account_id=payload["account_id"],
+                summary=payload.get("summary"),
+                category=payload.get("category"),
+                image_tags=payload.get("image_tags", [])
+            )
+        
+        # 새 로그 추가
+        p_name = result.get("account_name", row['account_name'])
+        db.add_job_log(
+            platform=platform,
+            account_name=p_name,
+            title=payload["title"],
+            status=result.get("status", "error"),
+            message=result.get("error", result.get("message", "")),
+            url=result.get("url", ""),
+            payload=payload # 동일 페이로드 유지
+        )
+
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "error": str(e)}
 
 
 @router.post("/generate-independent")

@@ -79,6 +79,7 @@ def init_db():
             status TEXT,
             message TEXT,
             url TEXT,
+            payload TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -117,6 +118,13 @@ def init_db():
         conn.commit()
     except Exception:
         pass  # 이미 컬럼이 있으면 무시
+
+    # job_logs 컬럼 추가 (payload)
+    try:
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN payload TEXT")
+        conn.commit()
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -296,13 +304,14 @@ def delete_publish_image(image_id: int):
 
 # ============ 작업 로그 ============
 
-def add_job_log(platform: str, account_name: str, title: str, status: str, message: str, url: str = ""):
+def add_job_log(platform: str, account_name: str, title: str, status: str, message: str, url: str = "", payload: dict = None):
     conn = get_db()
     cursor = conn.cursor()
+    payload_json = json.dumps(payload, ensure_ascii=False) if payload else None
     cursor.execute("""
-        INSERT INTO job_logs (platform, account_name, title, status, message, url)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (platform, account_name, title, status, message, url))
+        INSERT INTO job_logs (platform, account_name, title, status, message, url, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (platform, account_name, title, status, message, url, payload_json))
     conn.commit()
     conn.close()
 

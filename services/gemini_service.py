@@ -867,6 +867,18 @@ class GeminiService:
             return []
 
 
+    def get_cultural_context(self, language: str) -> str:
+        """언어별 맞춤형 문화/실정 가이드라인 반환"""
+        contexts = {
+            "ko": "대한민국: 최신 트렌드에 민감하며, 실용적이고 빠른 정보를 선호합니다. 정중하면서도 전문적인 어조를 사용하세요.",
+            "ja": "일본: 예의와 정중함을 극도로 중시합니다. 직접적인 광고보다는 정보 제공형 콘텐츠를 선호하며, 계절감이나 세밀한 디테일에 민감합니다. 독자의 감성을 자극하는 부드러운 화법을 사용하세요.",
+            "en": "미국/글로벌: 결론부터 말하는 두괄식 구조와 효율성을 중시합니다. 데이터와 근거를 바탕으로 한 설득력 있는 어조를 사용하며, '나에게 어떤 이득이 있는가'를 명확히 제시하세요.",
+            "vi": "베트남: 커뮤니티의 반응과 실질적인 혜택을 중시합니다. 친근하면서도 예의를 갖춘 어조를 사용하고, 젊은 층의 활기찬 에너지를 반영하세요.",
+            "ar": "아랍권: 전통과 명예를 중시하며, 화려하고 서술적인 표현을 즐깁니다. 종교적/문화적 금기사항에 유의하고 신뢰 관계 형성을 강조하세요.",
+            "it": "이탈리아: 예술, 디자인, 역사적 자부심이 강합니다. 감각적이고 열정적인 표현을 사용하며 스타일과 퀄리티를 강조하세요."
+        }
+        return contexts.get(language, "해당 언어권의 일반적인 문화적 정서와 사회적 관습을 반영하여 독자가 깊이 공감할 수 있도록 작성하세요.")
+
     async def generate_blog_content(self, source_content: str, platform: str, blog_style: str, language: str = "ko", user_notes: str = "", category: str = None) -> dict:
         """참고 자료를 바탕으로 블로그 포스팅 생성 (카테고리 템플릿 지원)"""
         import datetime
@@ -1095,12 +1107,16 @@ class GeminiService:
         
         current_date = config.get_kst_time().strftime("%Y-%m-%d")
         
+        # [Localized Adaptation] 언어별 문화적 맥락 로드
+        cultural_context = self.get_cultural_context(language)
+        
         prompt = prompts.GEMINI_GENERATE_BLOG.format(
             source_content=source_content[:15000],  # 토큰 제한 고려
             platform=platform,
             category=target_category,
             blog_style=blog_style,
             target_language=language,
+            cultural_context=cultural_context,
             user_notes=user_notes,
             category_template=template_html,
             current_date=current_date

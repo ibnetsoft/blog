@@ -10,6 +10,112 @@ import database as db
 from config import config
 
 class BlogService:
+    async def check_all_api_connections(self) -> Dict[str, Any]:
+        """모든 플랫폼의 연동 상태를 실시간으로 체크"""
+        results = {
+            "gemini": {"status": "ok", "message": "연결됨"},
+            "wordpress": {"status": "ok", "message": "연결됨"},
+            "blogger": {"status": "ok", "message": "연결됨"},
+            "telegram": {"status": "ok", "message": "연결됨"}
+        }
+
+        # 1. Gemini 체크 (단순히 키가 있는지 확인)
+        if not config.GEMINI_API_KEY:
+             results["gemini"] = {"status": "error", "message": "API 키가 설정되지 않았습니다."}
+        
+        # 2. WordPress 체크
+        wp_res = await self.verify_wordpress_connection()
+        if wp_res["status"] != "ok":
+            results["wordpress"] = wp_res
+
+        # 3. Blogger 체크 (계정별 실시간 체크)
+        accounts = db.get_blogger_accounts()
+        if accounts:
+            active_accounts = [acc for acc in accounts if acc.get('is_active', 1)]
+            if not active_accounts:
+                results["blogger"] = {"status": "error", "message": "활성화된 Blogger 계정이 없습니다."}
+            else:
+                failing_accounts = []
+                for acc in active_accounts:
+                    res = await self.verify_blogger_connection(acc['id'])
+                    if res["status"] != "ok":
+                        failing_accounts.append(f"{acc['name']}({acc['lang']}): {res['message']}")
+                
+                if failing_accounts:
+                    results["blogger"] = {
+                        "status": "error", 
+                        "message": "일부 계정 연동 오류: " + ", ".join(failing_accounts)
+                    }
+        else:
+            # 계정이 하나도 없는 경우 전역 설정 체크 (하위 호환)
+            blogger_res = await self.verify_blogger_connection()
+            if blogger_res["status"] != "ok":
+                results["blogger"] = blogger_res
+            
+        # 4. Telegram 체크
+        if not config.TELEGRAM_TOKEN:
+            results["telegram"] = {"status": "error", "message": "토큰이 설정되지 않았습니다."}
+
+        return results
+
+    async def verify_blogger_connection(self, account_id: int = None) -> Dict[str, str]:
+        """Blogger 연동(Access Token 갱신)이 실제로 유효한지 확인"""
+        try:
+            if account_id:
+                acc = db.get_blogger_account(account_id)
+                if not acc:
+                    return {"status": "error", "message": f"계정(ID:{account_id})을 찾을 수 없습니다."}
+                client_id = acc.get("client_id") or config.BLOG_CLIENT_ID
+                client_secret = acc.get("client_secret") or config.BLOG_CLIENT_SECRET
+                refresh_token = acc.get("refresh_token", "")
+            else:
+                client_id = config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
+                client_secret = config.BLOG_CLIENT_SECRET or db.get_global_setting("blog_client_secret", "")
+                refresh_token = db.get_global_setting("blog_refresh_token", "")
+
+            if not refresh_token:
+                return {"status": "error", "message": "Refresh Token이 없습니다. 재연동이 필요합니다."}
+            
+            if not client_id or not client_secret:
+                return {"status": "error", "message": "클라이언트 ID/비밀번호 설정이 누락되었습니다."}
+
+            token = await self._refresh_access_token(client_id, client_secret, refresh_token)
+            if token:
+                return {"status": "ok", "message": "연결됨"}
+            else:
+                return {"status": "error", "message": "Google 인증 토큰 갱신 실패 (만료되었거나 권한이 취소됨)"}
+        except Exception as e:
+            return {"status": "error", "message": f"오류: {str(e)}"}
+
+    async def verify_wordpress_connection(self) -> Dict[str, str]:
+        """WordPress API 연동 유효성 확인"""
+        try:
+            import base64
+            wp_url = config.WP_URL or db.get_global_setting("wp_url", "")
+            username = config.WP_USERNAME or db.get_global_setting("wp_username", "")
+            password = config.WP_PASSWORD or db.get_global_setting("wp_password", "")
+
+            if not wp_url or not username or not password:
+                return {"status": "error", "message": "워드프레스 설정 정보가 부족합니다."}
+
+            wp_url = wp_url.rstrip('/')
+            endpoint = f"{wp_url}/index.php?rest_route=/wp/v2/users/me"
+            
+            auth_str = f"{username}:{password}"
+            auth_base64 = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+            headers = {"Authorization": f"Basic {auth_base64}"}
+
+            async with httpx.AsyncClient(follow_redirects=True, verify=False) as client:
+                res = await client.get(endpoint, headers=headers, timeout=10)
+                if res.status_code == 200:
+                    return {"status": "ok", "message": "연결됨"}
+                elif res.status_code == 401:
+                    return {"status": "error", "message": "워드프레스 인증 실패 (아이디/앱 비밀번호 확인)"}
+                else:
+                    return {"status": "error", "message": f"워드프레스 연결 실패 ({res.status_code})"}
+        except Exception as e:
+            return {"status": "error", "message": f"연결 오류: {str(e)}"}
+
     async def process_blog_automation_v2(
         self,
         project_id: Optional[int],
@@ -294,59 +400,31 @@ class BlogService:
         platforms: List[Dict[str, str]],
         source_content: str = ""
     ) -> Dict[str, Any]:
-        """주제 하나로 한국어 원문을 생성한 뒤, 나머지 언어로 번역하여 반환 (번역 기반 워크플로우)"""
+        """[Localized Adaptation] 각 언어별 실정에 맞게 독립적으로 블로그 생성 (단순 번역이 아닌 원본 소스 기반 현지화)"""
         import asyncio
-
-        # 1. KO(한국어) 플랫폼 설정 찾기 (없으면 첫 번째를 기준으로 사용)
-        ko_config = next((p for p in platforms if p.get("language", "ko") == "ko"), platforms[0] if platforms else {})
-        other_configs = [p for p in platforms if p is not ko_config]
-
+        
+        # 1. 소스 내용 준비
         final_source = source_content if source_content and len(source_content.strip()) > 10 else topic
-
-        # 2. 한국어 원문 생성 (1회만)
-        print(f"[BlogService] Generating KO source for topic: {topic[:30]}...")
-        ko_res = await self.generate_blog_from_source(
-            source_type="text",
-            source_value=final_source,
-            platform=ko_config.get("platform", "wordpress"),
-            blog_style=ko_config.get("style", "info"),
-            language="ko",
-            user_notes=ko_config.get("user_notes", ""),
-            category=ko_config.get("category")
-        )
-        ko_res["language"] = "ko"
-        ko_res["target_id"] = ko_config.get("target_id")
-
-        results = [ko_res]
-
-        if ko_res.get("status") != "ok":
-            # 원문 생성 실패 시 나머지도 에러로 처리
-            for cfg in other_configs:
-                results.append({
-                    "status": "error",
-                    "language": cfg.get("language"),
-                    "target_id": cfg.get("target_id"),
-                    "error": "원문(한국어) 생성 실패로 번역을 건너뜁니다."
-                })
-            return {"status": "ok", "results": results}
-
-        # 3. 나머지 언어들은 원문을 번역하여 생성
-        async def translate_single(cfg: Dict[str, str]):
-            lang = cfg.get("language", "ja")
-            print(f"[BlogService] Translating to {lang}...")
+        
+        # 2. 각 플랫폼/언어별 독립 생성 헬퍼
+        async def generate_single(cfg: Dict[str, str]):
+            lang = cfg.get("language", "ko")
+            print(f"[BlogService] Generating localized content for {lang} context...")
             try:
-                trans_res = await self.translate_blog(
-                    title=ko_res.get("title", ""),
-                    content=ko_res.get("content", ""),
-                    target_language=lang,
-                    summary=ko_res.get("summary", ""),
-                    tags=", ".join(ko_res.get("tags", [])) if isinstance(ko_res.get("tags"), list) else ko_res.get("tags", ""),
-                    category=cfg.get("category"),
-                    skip_content=False
+                # 번역(translate_blog)이 아닌 원본 소스로부터 직접 생성(generate_blog_from_source)
+                # 이를 통해 각 나라 실정에 맞는 독립적인 글이 생성됩니다.
+                res = await self.generate_blog_from_source(
+                    source_type="text",
+                    source_value=final_source,
+                    platform=cfg.get("platform", "wordpress"),
+                    blog_style=cfg.get("style", "info"),
+                    language=lang,
+                    user_notes=cfg.get("user_notes", ""),
+                    category=cfg.get("category")
                 )
-                trans_res["language"] = lang
-                trans_res["target_id"] = cfg.get("target_id")
-                return trans_res
+                res["language"] = lang
+                res["target_id"] = cfg.get("target_id")
+                return res
             except Exception as e:
                 return {
                     "status": "error",
@@ -355,11 +433,13 @@ class BlogService:
                     "error": str(e)
                 }
 
-        if other_configs:
-            translated = await asyncio.gather(*[translate_single(cfg) for cfg in other_configs])
-            results.extend(translated)
+        # 3. 모든 언어 병렬 생성 실행
+        results = []
+        if platforms:
+            results = await asyncio.gather(*[generate_single(p) for p in platforms])
 
         return {"status": "ok", "results": results}
+
 
     async def upload_local_images_to_public(self, content: str) -> str:
         """본문 내 로컬 이미지(/output/)를 WordPress에 업로드하여 공개 URL로 일괄 치환.
@@ -719,22 +799,35 @@ class BlogService:
   color: #333333 !important; /* 기본 글자색: 어두운 회색 */
 }
 
-/* 1. 배경이 어두운 섹션 정밀 탐지 및 흰색 글씨 강제 */
+/* [Fix] Blogger 다크 테마 대응: 흰색 배경 위에서 흰색 글씨(테마 기본값)가 보이는 문제 강제 해결 */
+.bp-wrap p, .bp-wrap h1, .bp-wrap h2, .bp-wrap h3, .bp-wrap h4, .bp-wrap h5, .bp-wrap h6,
+.bp-wrap span, .bp-wrap li, .bp-wrap a, .bp-wrap b, .bp-wrap strong, .bp-wrap em, .bp-wrap i {
+  color: #333333 !important;
+}
+
+/* 1. 배경이 어두운 섹션 정밀 탐지 및 흰색 글씨 강제 (우리 툴이 생성한 어두운 섹션 전용) */
 .bp-wrap [style*="background-color: rgb(17, 17, 17)"],
 .bp-wrap [style*="background: rgb(17, 17, 17)"],
 .bp-wrap [style*="background-color: #111"],
 .bp-wrap [style*="background: #111"],
 .bp-wrap [style*="background: #000"],
 .bp-wrap [style*="background-color: #000"],
-.bp-wrap .dark-mode, 
-.bp-wrap [class*="hero"][style*="background"], 
-.bp-wrap [class*="card"][style*="background-color"] {
+.bp-wrap [style*="background-color: rgb(17, 17, 17)"] *,
+.bp-wrap [style*="background: rgb(17, 17, 17)"] *,
+.bp-wrap [style*="background-color: #111"] *,
+.bp-wrap [style*="background: #111"] *,
+.bp-wrap [style*="background: #000"] *,
+.bp-wrap [style*="background-color: #000"] *,
+.bp-wrap .dark-mode, .bp-wrap .dark-mode *, 
+.bp-wrap [class*="hero"][style*="background"], .bp-wrap [class*="hero"][style*="background"] *,
+.bp-wrap [class*="card"][style*="background-color"], .bp-wrap [class*="card"][style*="background-color"] * {
   color: #ffffff !important;
 }
 
 /* 2. 어두운 배경 내부의 텍스트 요소들 명시 보정 */
 .bp-wrap [style*="background"] h1, .bp-wrap [style*="background"] h2, .bp-wrap [style*="background"] h3,
 .bp-wrap [style*="background"] p, .bp-wrap [style*="background"] span,
+.bp-wrap [style*="background"] li, .bp-wrap [style*="background"] a, 
 .bp-wrap [class*="hero"][style*="background"] h1,
 .bp-wrap [class*="hero"][style*="background"] p {
   color: #ffffff !important;
@@ -745,6 +838,13 @@ class BlogService:
 .bp-wrap [class*="hero"]:not([style*="background"]),
 .bp-wrap [class*="card"]:not([style*="background"]) {
   color: #222222 !important;
+}
+
+/* 4. Blogger 본문의 모든 텍스트 변수(테마 변수) 강제 오버라이드 */
+.bp-wrap {
+  --text-color: #333333 !important;
+  --body-text: #333333 !important;
+  --title-color: #222222 !important;
 }
 
 /* 레이아웃 구조용 요소들만 block 강제 */
