@@ -49,9 +49,12 @@ class SourceService:
                 
             lines = [line.strip() for line in text.split('\n') if len(line.strip()) > 10]
             clean_text = '\n'.join(lines)
-            
+
+            if not clean_text.strip():
+                return {"status": "error", "message": "해당 URL에서 본문 내용을 추출할 수 없습니다. 로그인이 필요하거나 동적 페이지일 수 있습니다."}
+
             title = soup.title.string if soup.title else url
-            
+
             return {
                 "status": "ok",
                 "title": title.strip() if title else url,
@@ -134,7 +137,11 @@ class SourceService:
                 with open(filepath, 'rb') as f:
                     pdf = PyPDF2.PdfReader(f)
                     for page in pdf.pages:
-                        text += page.extract_text() + "\n"
+                        extracted = page.extract_text()
+                        if extracted:
+                            text += extracted + "\n"
+                if not text.strip():
+                    return {"status": "error", "message": "PDF에서 텍스트를 추출할 수 없습니다. 이미지 스캔본 PDF이거나 보호된 파일일 수 있습니다."}
                 return {"status": "ok", "title": os.path.basename(filepath), "content": text[:15000], "type": "pdf"}
             
             elif ext in [".txt", ".md"]:

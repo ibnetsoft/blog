@@ -1137,6 +1137,10 @@ class GeminiService:
                 
                 # [[CONTENT]] 플레이스홀더가 본문에 남아있으면 제거
                 content_val = content_val.replace("[[CONTENT]]", "")
+
+                # [xxx Name 1], [Product Name], [AI Tool Name] 등 미완성 플레이스홀더 제거
+                content_val = re.sub(r'\[[^\]]{1,60}(?:Name|Tool|Product|Service|Brand|App|Platform|Generator)\s*\d*\]', '', content_val)
+                content_val = re.sub(r'\[(?:제품명|서비스명|브랜드명|앱명|플랫폼명|도구명)\s*\d*\]', '', content_val)
                 
                 # HTML 태그 보정 (생성 도중 잘렸을 경우)
                 if "<html" in content_val and "</html>" not in content_val:

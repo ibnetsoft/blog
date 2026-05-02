@@ -357,16 +357,18 @@ class BlogService:
             # 1. 소스 내용 추출
             content_data = {}
             if source_type == "youtube":
-                content_data = await source_service.extract_text_from_youtube(source_value)
+                content_data = await source_service.extract_from_youtube(source_value)
             elif source_type == "url":
-                content_data = await source_service.extract_text_from_url(source_value)
+                content_data = await source_service.extract_from_web(source_value)
             elif source_type == "text":
                 content_data = {"title": "사용자 입력 텍스트", "content": source_value}
             else:
                 return {"status": "error", "error": f"지원하지 않는 소스 유형입니다: {source_type}"}
     
-            if not content_data.get("content"):
-                return {"status": "error", "error": "소스에서 내용을 추출하지 못했습니다."}
+            if content_data.get("status") == "error":
+                return {"status": "error", "error": content_data.get("message", "소스에서 내용을 추출하지 못했습니다.")}
+            if len(content_data.get("content", "").strip()) < 50:
+                return {"status": "error", "error": "소스에서 충분한 내용을 추출하지 못했습니다. (PDF 이미지 스캔본이거나 내용이 없는 페이지일 수 있습니다.)"}
     
             # 2. 블로그 생성 (Gemini)
             blog_data = await gemini_service.generate_blog_content(
