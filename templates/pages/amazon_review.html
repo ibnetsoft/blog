@@ -1,0 +1,424 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+    <!-- 헤더 섹션 -->
+    <div class="flex flex-col gap-1 px-4">
+        <h1 class="text-2xl font-black text-gray-900 dark:text-white flex items-center gap-3">
+            <span class="text-3xl">🛒</span> 아마존 AI 글로벌 리뷰어
+        </h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">
+            아마존 상품 URL 하나로 전 세계 블로그에 최적화된 설득형 리뷰를 자동 생성합니다.
+        </p>
+    </div>
+
+    <!-- 상단: URL 입력 및 생성 옵션 (좌우 배치) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 px-4">
+        <!-- 좌측: URL 입력 카드 -->
+        <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 relative overflow-hidden group">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-orange-500/10 transition-all duration-700"></div>
+            
+            <div class="relative space-y-6">
+                <div class="space-y-4">
+                    <label class="block text-xs font-black text-gray-400 uppercase tracking-widest">상품 URL 입력</label>
+                    <div class="flex flex-col gap-2">
+                        <input type="text" id="amazonUrl" 
+                            placeholder="https://www.amazon.com/dp/..."
+                            class="w-full bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-2xl px-5 py-4 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all">
+                        <button onclick="analyzeAmazonProduct()" id="btnAnalyze"
+                            class="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-orange-500/20 active:scale-95 flex items-center justify-center gap-2">
+                            <span id="analyzeSpinner" class="hidden">⌛</span> 분석하기
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI 추천 트렌드 영역 -->
+                <div class="pt-2">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="flex h-2 w-2 rounded-full bg-orange-500 animate-pulse"></span>
+                        <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">AI 추천 인기 상품군</span>
+                    </div>
+                    <div id="trendContainer" class="flex flex-wrap gap-2">
+                        <span class="text-[9px] text-gray-400 italic">트렌드 분석 중...</span>
+                    </div>
+                </div>
+
+                <!-- 분석된 상품 정보 미리보기 (카드 내부 배치) -->
+                <div id="productPreview" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div class="bg-gray-50 dark:bg-gray-900/50 rounded-2xl p-4 border border-dashed border-gray-200 dark:border-gray-700 flex items-center gap-4">
+                        <div class="w-20 h-20 bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 p-2 flex-shrink-0">
+                            <img id="prodImage" src="" alt="Product" class="w-full h-full object-contain">
+                        </div>
+                        <div class="min-w-0 flex-1 space-y-1">
+                            <h3 id="prodTitle" class="text-xs font-bold text-gray-800 dark:text-white truncate"></h3>
+                            <div class="flex items-center gap-3">
+                                <span id="prodPrice" class="text-sm font-black text-orange-500"></span>
+                                <span id="prodRating" class="text-[10px] text-yellow-500 font-bold"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 우측: 생성 설정 카드 -->
+        <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 flex flex-col justify-between">
+            <div class="space-y-6">
+                <h2 class="text-sm font-black text-gray-800 dark:text-white flex items-center gap-2">
+                    <span class="text-orange-500">⚡</span> 생성 옵션
+                </h2>
+
+                <div class="space-y-4">
+                    <div class="space-y-3">
+                        <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest">Amazon Associate ID</label>
+                        <input type="text" id="affiliateId" placeholder="예: yourtag-20"
+                            class="w-full bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-xs focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all">
+                        <p class="text-[9px] text-gray-400 leading-relaxed italic">
+                            * 상품 링크 끝에 자동으로 tag 파라미터가 추가됩니다.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="generateAmazonBlogs()" id="btnGenerate"
+                class="w-full bg-gray-900 dark:bg-white dark:text-gray-900 text-white font-black py-5 mt-6 rounded-2xl shadow-xl hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none text-lg">
+                전 세계 블로그 리뷰 동시 생성 시작
+            </button>
+        </div>
+    </div>
+
+    <!-- 하단: 에디터 및 미리보기 영역 (Full Width) -->
+    <div class="px-4 pb-12">
+        <div id="generationSection" class="space-y-4 animate-in fade-in duration-700">
+            <!-- 상단 탭 및 게시 버튼 -->
+            <div class="flex items-center justify-between bg-gray-900/80 p-2 rounded-2xl border border-white/10 backdrop-blur-md shadow-2xl">
+                <div class="flex gap-1 overflow-x-auto no-scrollbar" id="langTabs">
+                    <div class="px-4 py-2 rounded-xl text-[10px] font-black text-gray-500 italic">게시물 대기 중...</div>
+                </div>
+                <button onclick="postToBlogs()" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black px-8 py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2 whitespace-nowrap">
+                    🚀 분석된 모든 국가 블로그에 일괄 게시하기
+                </button>
+            </div>
+
+            <!-- 에디터 본체 -->
+            <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-2xl border border-gray-100 dark:border-gray-700 space-y-6 min-h-[800px] flex flex-col">
+                <!-- 제목 입력 -->
+                <div class="space-y-2">
+                    <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Post Title</label>
+                    <input type="text" id="editTitle" placeholder="제목이 여기에 나타납니다." oninput="updateCurrentData('title', this.value)"
+                        class="w-full bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl px-5 py-4 text-xl font-black focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 태그 입력 -->
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Tags</label>
+                        <input type="text" id="editTags" oninput="updateCurrentData('tags', this.value)"
+                            class="w-full bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl px-5 py-3 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" placeholder="태그 (쉼표 구분)">
+                    </div>
+                    <!-- 요약 입력 -->
+                    <div class="space-y-2">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Summary (Excerpt)</label>
+                        <input type="text" id="editSummary" oninput="updateCurrentData('summary', this.value)"
+                            class="w-full bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl px-5 py-3 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all" placeholder="메타 설명 요약">
+                    </div>
+                </div>
+
+                <!-- 본문 에디터 -->
+                <div class="space-y-2 flex-1 flex flex-col">
+                    <div class="flex items-center justify-between">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Content Editor & Preview</label>
+                        <div class="flex gap-1 bg-gray-100 dark:bg-gray-900 p-1 rounded-lg">
+                            <button onclick="setEditorMode('edit')" id="btnModeEdit" class="px-5 py-1.5 rounded-md text-[10px] font-black transition-all bg-white dark:bg-gray-700 shadow-sm text-blue-500">EDIT MODE</button>
+                            <button onclick="setEditorMode('preview')" id="btnModePreview" class="px-5 py-1.5 rounded-md text-[10px] font-black transition-all text-gray-400">PREVIEW MODE</button>
+                        </div>
+                    </div>
+                    
+                    <textarea id="editContent" placeholder="글 내용이 여기에 나타납니다." oninput="updateCurrentData('content', this.value)"
+                        class="w-full flex-1 h-[700px] bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-2xl p-8 text-base font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all custom-scrollbar"></textarea>
+                    
+                    <div id="previewContent" class="hidden w-full flex-1 h-[700px] bg-white dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 rounded-2xl p-10 overflow-y-auto custom-scrollbar prose dark:prose-invert max-w-none">
+                        <div class="text-gray-400 italic text-sm">미리보기가 여기에 나타납니다.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentProductData = null;
+    let generatedResults = {};
+    let currentLang = null;
+
+    async function analyzeAmazonProduct() {
+        const url = document.getElementById('amazonUrl').value.trim();
+        if (!url) return Utils.showToast('URL을 입력해주세요', 'error');
+
+        const btn = document.getElementById('btnAnalyze');
+        const spinner = document.getElementById('analyzeSpinner');
+        
+        try {
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+
+            const res = await fetch('/api/amazon/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url })
+            });
+            
+            const data = await res.json();
+            if (data.status === 'ok') {
+                currentProductData = data;
+                displayProductPreview(data);
+                Utils.showToast('상품 분석 완료!', 'success');
+            } else {
+                Utils.showToast(data.detail || '분석 실패', 'error');
+            }
+        } catch (e) {
+            Utils.showToast('분석 중 오류 발생', 'error');
+        } finally {
+            btn.disabled = false;
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function displayProductPreview(data) {
+        const preview = document.getElementById('productPreview');
+        preview.classList.remove('hidden');
+        
+        document.getElementById('prodTitle').textContent = data.title;
+        document.getElementById('prodPrice').textContent = data.price || 'Price Unknown';
+        document.getElementById('prodImage').src = data.image_url || 'https://via.placeholder.com/300?text=No+Image';
+        document.getElementById('prodRating').textContent = data.rating ? `⭐ ${data.rating} (${data.review_count})` : '';
+        
+        const tags = document.getElementById('prodTags');
+        tags.innerHTML = '';
+        (data.features || []).slice(0, 3).forEach(f => {
+            const span = document.createElement('span');
+            span.className = 'text-[9px] bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 px-2 py-1 rounded-lg font-bold';
+            span.textContent = f.length > 20 ? f.substring(0, 20) + '...' : f;
+            tags.appendChild(span);
+        });
+    }
+
+    async function generateAmazonBlogs() {
+        if (!currentProductData) return Utils.showToast('먼저 상품을 분석해주세요', 'error');
+
+        const affiliateId = document.getElementById('affiliateId').value.trim();
+        const btn = document.getElementById('btnGenerate');
+
+        try {
+            btn.disabled = true;
+            const originalBtnText = btn.textContent;
+            btn.textContent = '⌛ 리뷰 생성 중...';
+            
+            // UI 초기화 (생성 중 상태)
+            document.getElementById('langTabs').innerHTML = '<div class="px-4 py-2 rounded-xl text-[10px] font-black text-orange-500 animate-pulse italic">다국어 리뷰 생성 중...</div>';
+            document.getElementById('editTitle').value = '';
+            document.getElementById('editTags').value = '';
+            document.getElementById('editSummary').value = '';
+            document.getElementById('editContent').value = 'AI가 전 세계 블로그를 위한 최적의 리뷰를 작성하고 있습니다. 잠시만 기다려 주세요...';
+            
+            const res = await fetch('/api/amazon/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_data: currentProductData,
+                    languages: [], 
+                    affiliate_id: affiliateId
+                })
+            });
+            
+            const data = await res.json();
+            if (data.status === 'ok' && data.results) {
+                generatedResults = {};
+                const langs = [];
+                let successCount = 0;
+                
+                data.results.forEach(r => {
+                    generatedResults[r.language] = r;
+                    langs.push(r.language);
+                    if (r.status !== 'error') successCount++;
+                });
+
+                renderTabs(langs);
+                showContent(langs[0]);
+                
+                if (successCount > 0) {
+                    Utils.showToast(`리뷰 생성 완료! (${successCount}/${data.results.length} 성공)`, 'success');
+                } else {
+                    Utils.showToast('모든 리뷰 생성에 실패했습니다.', 'error');
+                }
+            } else {
+                Utils.showToast(data.error || '생성 실패', 'error');
+                document.getElementById('langTabs').innerHTML = `<div class="px-4 py-2 rounded-xl text-[10px] font-black text-red-500 italic">오류: ${data.error || '알 수 없는 서버 오류'}</div>`;
+            }
+        } catch (e) {
+            console.error(e);
+            Utils.showToast('생성 중 오류 발생', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '글 생성 시작하기';
+        }
+    }
+
+    function renderTabs(langs) {
+        const container = document.getElementById('langTabs');
+        container.innerHTML = '';
+        
+        langs.forEach(lang => {
+            const btn = document.createElement('button');
+            const langName = { 
+                ko: 'KOR (WP)', 
+                en: 'ENG (Blog)', 
+                ja: 'JPN (Blog)', 
+                es: 'ESP (Blog)', 
+                fr: 'FRA (Blog)', 
+                de: 'GER (Blog)', 
+                vi: 'VIE (Blog)' 
+            }[lang] || `${lang.toUpperCase()} (Blog)`;
+            
+            btn.className = `px-4 py-2 rounded-xl text-[10px] font-black transition-all whitespace-nowrap ${lang === langs[0] ? 'bg-white dark:bg-gray-700 shadow-lg text-blue-500' : 'text-gray-400 hover:text-gray-200'}`;
+            btn.textContent = langName;
+            btn.onclick = (e) => {
+                document.querySelectorAll('#langTabs button').forEach(b => {
+                    b.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow-lg', 'text-blue-500');
+                    b.classList.add('text-gray-400');
+                });
+                e.target.classList.add('bg-white', 'dark:bg-gray-700', 'shadow-lg', 'text-blue-500');
+                e.target.classList.remove('text-gray-400');
+                showContent(lang);
+            };
+            container.appendChild(btn);
+        });
+        currentLang = langs[0];
+    }
+
+    function showContent(lang) {
+        currentLang = lang;
+        const data = generatedResults[lang];
+        if (!data) return;
+
+        document.getElementById('editTitle').value = data.title || '';
+        document.getElementById('editTags').value = (data.tags || []).join(', ');
+        document.getElementById('editSummary').value = data.summary || '';
+        document.getElementById('editContent').value = data.content || '';
+        
+        updatePreview();
+    }
+
+    function updateCurrentData(field, value) {
+        if (!currentLang || !generatedResults[currentLang]) return;
+        
+        if (field === 'tags') {
+            generatedResults[currentLang][field] = value.split(',').map(t => t.trim()).filter(t => t);
+        } else {
+            generatedResults[currentLang][field] = value;
+        }
+
+        if (field === 'content') updatePreview();
+    }
+
+    function setEditorMode(mode) {
+        const editArea = document.getElementById('editContent');
+        const previewArea = document.getElementById('previewContent');
+        const btnEdit = document.getElementById('btnModeEdit');
+        const btnPreview = document.getElementById('btnModePreview');
+
+        if (mode === 'edit') {
+            editArea.classList.remove('hidden');
+            previewArea.classList.add('hidden');
+            btnEdit.classList.add('bg-white', 'dark:bg-gray-700', 'shadow-sm', 'text-blue-500');
+            btnEdit.classList.remove('text-gray-400');
+            btnPreview.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow-sm', 'text-blue-500');
+            btnPreview.classList.add('text-gray-400');
+        } else {
+            editArea.classList.add('hidden');
+            previewArea.classList.remove('hidden');
+            btnPreview.classList.add('bg-white', 'dark:bg-gray-700', 'shadow-sm', 'text-blue-500');
+            btnPreview.classList.remove('text-gray-400');
+            btnEdit.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow-sm', 'text-blue-500');
+            btnEdit.classList.add('text-gray-400');
+            updatePreview();
+        }
+    }
+
+    function updatePreview() {
+        const content = document.getElementById('editContent').value;
+        const previewArea = document.getElementById('previewContent');
+        
+        // HTML 문서인지 확인 (새로운 프리미엄 포맷 대응)
+        const isHtml = content.trim().startsWith('<style') || content.trim().startsWith('<div');
+        
+        let formattedContent;
+        if (isHtml) {
+            formattedContent = content;
+        } else {
+            formattedContent = content
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n\n/g, '<p class="mb-4"></p>')
+                .replace(/\n/g, '<br>');
+        }
+            
+        previewArea.innerHTML = formattedContent;
+    }
+
+    async function postToBlogs() {
+        const posts = Object.values(generatedResults);
+        if (posts.length === 0) return Utils.showToast('게시할 내용이 없습니다.', 'error');
+
+        if (!confirm(`총 ${posts.length}개 블로그에 게시하시겠습니까? (수정된 내용이 반영됩니다)`)) return;
+
+        try {
+            Utils.showToast('일괄 게시 시작...', 'info');
+            
+            const res = await fetch('/api/amazon/publish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ posts })
+            });
+            
+            const data = await res.json();
+            if (data.status === 'ok') {
+                let successCount = data.results.filter(r => r.status === 'ok').length;
+                let failCount = data.results.length - successCount;
+                alert(`작업 완료!\n- 성공: ${successCount}\n- 실패: ${failCount}\n\n[작업로그] 메뉴에서 상세 결과를 확인할 수 있습니다.`);
+                Utils.showToast('게시 완료', 'success');
+            }
+        } catch (e) {
+            Utils.showToast('게시 중 오류 발생', 'error');
+        }
+    }
+
+    async function loadAmazonTrends() {
+        const container = document.getElementById('trendContainer');
+        try {
+            const res = await fetch('/api/amazon/trends');
+            const data = await res.json();
+            if (data.status === 'ok') {
+                container.innerHTML = '';
+                data.trends.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'text-[9px] font-bold px-3 py-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-orange-500 hover:text-white transition-all border border-gray-200 dark:border-gray-700';
+                    btn.innerHTML = `🔥 ${item.keyword}`;
+                    btn.title = item.reason;
+                    btn.onclick = () => {
+                        window.open(`https://www.amazon.com/s?k=${encodeURIComponent(item.keyword)}`, '_blank');
+                    };
+                    container.appendChild(btn);
+                });
+            }
+        } catch (e) {
+            container.innerHTML = '<span class="text-[9px] text-gray-500 italic">추천을 불러올 수 없습니다.</span>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadAmazonTrends();
+    });
+</script>
+{% endblock %}

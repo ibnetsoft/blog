@@ -138,6 +138,10 @@
                             <span class="text-sm text-gray-500">📁 {{ t('btn_select_file') }}</span>
                             <input id="imageFileInput" type="file" accept="image/*" class="hidden" onchange="uploadImageFile(this)">
                         </label>
+                        <label class="flex-1 flex items-center justify-center gap-2 py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl cursor-pointer hover:border-pink-400 transition-colors">
+                            <span class="text-sm text-gray-500">🎬 TikTok 비디오</span>
+                            <input id="videoFileInput" type="file" accept="video/*" class="hidden" onchange="uploadVideoFile(this)">
+                        </label>
                     </div>
                     <div class="mt-4 flex justify-between">
                         <span id="imageProgress" class="text-xs text-gray-400">{{ t('status_images') }}: 0/0</span>
@@ -184,6 +188,21 @@
                             <span class="text-2xl">📝</span>
                             <span class="font-bold text-sm">Google Blogger</span>
                         </label>
+                        <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all border-blue-400 bg-blue-50/30 dark:bg-blue-500/10">
+                            <input type="checkbox" id="chkFacebook" class="w-4 h-4 accent-blue-600">
+                            <span class="text-2xl">📘</span>
+                            <span class="font-bold text-sm">Facebook</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all border-pink-400 bg-pink-50/30 dark:bg-pink-500/10">
+                            <input type="checkbox" id="chkInstagram" class="w-4 h-4 accent-pink-500">
+                            <span class="text-2xl">📸</span>
+                            <span class="font-bold text-sm">Instagram</span>
+                        </label>
+                        <label class="flex items-center gap-3 p-3 border-2 rounded-xl cursor-pointer transition-all border-gray-400 bg-gray-50/60 dark:bg-gray-700/20">
+                            <input type="checkbox" id="chkTiktok" class="w-4 h-4 accent-gray-800">
+                            <span class="text-2xl">🎵</span>
+                            <span class="font-bold text-sm">TikTok</span>
+                        </label>
                     </div>
 
                     <div class="mt-4">
@@ -194,7 +213,11 @@
                     <button onclick="uploadImagesToWP()" id="btnUploadWP" class="w-full mt-4 py-2 bg-blue-100 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl font-bold text-sm hover:bg-blue-200 transition-colors">
                         {{ t('btn_upload_images_to_wp') }}
                     </button>
+                    <button onclick="promoteMediaAssets()" id="btnPromoteMedia" class="w-full mt-2 py-2 bg-violet-100 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 rounded-xl font-bold text-sm hover:bg-violet-200 transition-colors">
+                        공개 미디어 준비
+                    </button>
                     <span id="wpUploadStatus" class="text-xs text-gray-400 block mt-1"></span>
+                    <div id="mediaPromotionDetails" class="hidden mt-2 p-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 text-xs text-gray-500 dark:text-gray-300"></div>
 
                     <button onclick="postToBlogs()" class="w-full mt-3 py-3 bg-gradient-to-r from-blue-500 to-green-500 text-white rounded-xl font-bold text-lg hover:from-blue-600 hover:to-green-600 transition-all shadow-lg">
                         {{ t('btn_post_to_blog') }}
@@ -601,6 +624,33 @@ async function uploadImageFile(input) {
     input.value = '';
 }
 
+async function uploadVideoFile(input) {
+    if (selectedImageIdx < 0) { alert(i18n.alert_select_image_point); input.value = ''; return; }
+    if (!input.files || !input.files[0]) return;
+    if (!currentSessionId) return;
+
+    const img = imagePoints[selectedImageIdx];
+    const formData = new FormData();
+    formData.append('file', input.files[0]);
+
+    try {
+        const res = await fetch(`/api/publish/upload-video/${currentSessionId}/${img.id}`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            imagePoints[selectedImageIdx].video_url = data.video_url;
+            imagePoints[selectedImageIdx].status = 'done';
+            renderImagePoints();
+            alert('비디오 URL이 저장되었습니다. TikTok 게시 시 사용됩니다.');
+        } else {
+            alert(data.error || i18n.err_upload_failed);
+        }
+    } catch(e) { alert(i18n.err_upload_failed + ': ' + e.message); }
+    input.value = '';
+}
+
 async function deleteImagePoint(imageId) {
     if (!confirm(i18n.confirm_delete)) return;
     try {
@@ -673,12 +723,50 @@ async function buildHtml() {
     } catch(e) { alert(i18n.status_error + ': ' + e.message); }
 }
 
+async function promoteMediaAssets() {
+    if (!currentSessionId) return alert(i18n.status_failed);
+    const statusEl = document.getElementById('wpUploadStatus');
+    const detailsEl = document.getElementById('mediaPromotionDetails');
+    statusEl.textContent = '공개 미디어 준비 중...';
+    detailsEl.classList.add('hidden');
+    detailsEl.innerHTML = '';
+    try {
+        const res = await fetch(`/api/publish/promote-media/${currentSessionId}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status !== 'ok') {
+            throw new Error(data.error || '공개 미디어 준비 실패');
+        }
+        const promoted = data.promoted_images || [];
+        const pendingVideos = data.pending_videos || [];
+        const failedImages = data.failed_images || [];
+        statusEl.textContent = `이미지 ${promoted.length}건 공개 URL 준비 완료, 비디오 대기 ${pendingVideos.length}건`;
+        detailsEl.classList.remove('hidden');
+        detailsEl.innerHTML = `
+            <div class="font-bold text-gray-700 dark:text-gray-200 mb-1">미디어 준비 결과</div>
+            <ul class="space-y-1">
+                <li>공개 이미지 URL 준비: ${promoted.length}건</li>
+                <li>공개 비디오 URL 필요: ${pendingVideos.length}건</li>
+                <li>실패/제거된 로컬 이미지: ${failedImages.length}건</li>
+            </ul>
+            ${pendingVideos.length ? '<div class="mt-2 text-amber-500">TikTok 비디오는 외부에서 접근 가능한 공개 URL이 필요합니다.</div>' : ''}
+        `;
+        if (data.content_html) {
+            document.getElementById('blogPreview').innerHTML = data.content_html;
+        }
+    } catch (e) {
+        statusEl.textContent = e.message;
+    }
+}
+
 async function postToBlogs() {
     if (!currentSessionId) return alert(i18n.status_failed);
 
     const platforms = [];
     if (document.getElementById('chkWordpress').checked) platforms.push('wordpress');
     if (document.getElementById('chkBlogger').checked) platforms.push('blogger');
+    if (document.getElementById('chkFacebook').checked) platforms.push('facebook');
+    if (document.getElementById('chkInstagram').checked) platforms.push('instagram');
+    if (document.getElementById('chkTiktok').checked) platforms.push('tiktok');
     if (platforms.length === 0) return alert(i18n.alert_select_platform);
 
     const tagsStr = document.getElementById('blogTags').value;
@@ -693,18 +781,87 @@ async function postToBlogs() {
         const data = await res.json();
 
         const resultDiv = document.getElementById('blogResultContent');
+        const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+        const topLevelDetails = Array.isArray(data.details) ? data.details : [];
+        if (data.status === 'error' && !data.results) {
+            const detailHtml = topLevelDetails.length
+                ? `<ul class="mt-2 ml-4 list-disc text-xs text-red-500 dark:text-red-300">${topLevelDetails.map(detail => `<li>${detail}</li>`).join('')}</ul>`
+                : '';
+            const warningHtml = warnings.length
+                ? `<ul class="mt-2 ml-4 list-disc text-xs text-amber-500 dark:text-amber-300">${warnings.map(warning => `<li>${warning}</li>`).join('')}</ul>`
+                : '';
+            resultDiv.innerHTML = `
+                <div class="p-4 bg-red-50 dark:bg-red-500/10 rounded-lg border border-red-200/60 dark:border-red-500/20">
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                            <div class="font-bold text-red-600">게시 준비 실패</div>
+                            <div class="text-xs text-red-500 dark:text-red-300 mt-1">${data.error || i18n.status_failed}</div>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-[10px] font-black">실패</span>
+                    </div>
+                    ${detailHtml}
+                    ${warningHtml}
+                </div>`;
+            document.getElementById('blogResults').classList.remove('hidden');
+            return;
+        }
+
         let html = '';
         const results = data.results || {};
+        const platformLabels = {
+            wordpress: 'WordPress',
+            blogger: 'Blogger',
+            facebook: 'Facebook',
+            instagram: 'Instagram',
+            tiktok: 'TikTok'
+        };
+        const errorTypeLabels = {
+            auth: '인증',
+            image_upload: '미디어',
+            network: '네트워크',
+            rate_limit: '속도제한',
+            validation: '검증',
+            upstream: '외부 API'
+        };
 
         for (const [platform, result] of Object.entries(results)) {
+            const label = platformLabels[platform] || platform;
+            const errorType = errorTypeLabels[result.error_type] || result.error_type || '';
+            const retryBadge = result.retryable
+                ? '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 text-[10px] font-black">재시도 가능</span>'
+                : '';
+            const typeBadge = errorType
+                ? `<span class="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-200 text-[10px] font-black">${errorType}</span>`
+                : '';
+            const message = result.message || result.error || '';
+
             if (result.status === 'ok') {
-                html += `<div class="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg mb-2">
-                    <span class="font-bold text-green-600">${platform}</span>: ${i18n.status_post_done}
-                    ${result.url ? `<a href="${result.url}" target="_blank" class="text-blue-500 ml-2 text-sm">${i18n.status_go_preview} →</a>` : ''}
+                html += `<div class="p-3 bg-green-50 dark:bg-green-500/10 rounded-lg mb-2 border border-green-200/60 dark:border-green-500/20">
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                            <div class="font-bold text-green-600">${label}</div>
+                            <div class="text-xs text-gray-600 dark:text-gray-300 mt-1">${message || i18n.status_post_done}</div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 text-[10px] font-black">성공</span>
+                            ${result.post_id ? `<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-[10px] font-black">ID ${result.post_id}</span>` : ''}
+                            ${result.url ? `<a href="${result.url}" target="_blank" class="text-blue-500 ml-1 text-sm">${i18n.status_go_preview} →</a>` : '<span class="text-[10px] text-gray-400">URL 대기</span>'}
+                        </div>
+                    </div>
                 </div>`;
             } else {
-                html += `<div class="p-3 bg-red-50 dark:bg-red-500/10 rounded-lg mb-2">
-                    <span class="font-bold text-red-600">${platform}</span>: ${result.error || i18n.status_failed}
+                html += `<div class="p-3 bg-red-50 dark:bg-red-500/10 rounded-lg mb-2 border border-red-200/60 dark:border-red-500/20">
+                    <div class="flex items-start justify-between gap-3 flex-wrap">
+                        <div class="min-w-0">
+                            <div class="font-bold text-red-600">${label}</div>
+                            <div class="text-xs text-red-500 dark:text-red-300 mt-1 break-all">${result.error || i18n.status_failed}</div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 text-[10px] font-black">실패</span>
+                            ${typeBadge}
+                            ${retryBadge}
+                        </div>
+                    </div>
                 </div>`;
             }
         }
@@ -717,6 +874,12 @@ async function postToBlogs() {
         }
         if (results.blogger?.status === 'ok') {
             document.getElementById('summaryBlogger').innerHTML = `<a href="${results.blogger.url}" target="_blank" class="text-orange-500">${i18n.status_post_done}</a>`;
+        }
+        if (results.facebook?.status === 'ok') {
+            document.getElementById('summaryWp').innerHTML += `<div class="text-[10px] text-blue-500 mt-1">Facebook 게시 완료</div>`;
+        }
+        if (results.instagram?.status === 'ok') {
+            document.getElementById('summaryBlogger').innerHTML += `<div class="text-[10px] text-pink-500 mt-1">Instagram 게시 완료</div>`;
         }
     } catch(e) { alert(i18n.err_post_failed + ': ' + e.message); }
 }

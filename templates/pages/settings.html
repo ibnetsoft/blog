@@ -1,168 +1,289 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 {% block content %}
-<div class="max-w-5xl mx-auto">
-
-    <!-- 헤더 -->
+<div class="max-w-5xl mx-auto pb-12">
     <div class="flex items-center justify-between mb-8">
-        <h2 class="text-2xl font-black text-gray-800 dark:text-white flex items-center gap-3">
-            <span class="p-2 bg-blue-500/10 text-blue-500 rounded-xl">⚙️</span>
-            <span>설정</span>
-        </h2>
+        <div>
+            <h2 class="text-2xl font-black text-gray-800 dark:text-white">?ㅼ젙</h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">寃뚯떆 怨꾩젙, API ?? ?먮룞 寃뚯떆 ?듭뀡??愿由ы빀?덈떎.</p>
+        </div>
         <button onclick="saveApiSettings()"
             class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-500/20 transition-all active:scale-95">
-            💾 모든 설정 저장
-        </button>
+            紐⑤뱺 ?ㅼ젙 ???        </button>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
-        <!-- Left Column -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div class="space-y-6">
-            <!-- Gemini AI -->
-            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50 hover:border-blue-500/30 transition-all">
-                <h3 class="font-black text-gray-800 dark:text-white mb-5 flex items-center gap-2 text-lg">
-                    🤖 Gemini AI
-                </h3>
-                <div class="space-y-1.5">
-                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">Google AI API Key</label>
-                    <input type="password" id="geminiKey" placeholder="AIzaSy..."
-                        class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
+            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50">
+                <h3 class="font-black text-gray-800 dark:text-white mb-5 text-lg">湲?곌린 AI</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Provider</label>
+                        <select id="aiTextProvider" onchange="onAiProviderChange()"
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
+                            <option value="gemini">Gemini</option>
+                            <option value="openai">OpenAI GPT</option>
+                            <option value="anthropic">Claude</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Writing Model</label>
+                        <select id="aiTextModel"
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
+                        </select>
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Gemini API Key</label>
+                        <input type="password" id="geminiKey" autocomplete="new-password" spellcheck="false" placeholder="AIzaSy..."
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
+                        <p id="geminiKeyStatus" class="mt-1 text-[11px] text-gray-400">誘몄???/p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">OpenAI API Key</label>
+                        <input type="password" id="openaiKey" autocomplete="new-password" spellcheck="false" placeholder="sk-..."
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 focus:outline-none transition-all">
+                        <p id="openaiKeyStatus" class="mt-1 text-[11px] text-gray-400">誘몄???/p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Anthropic API Key</label>
+                        <input type="password" id="anthropicKey" autocomplete="new-password" spellcheck="false" placeholder="sk-ant-..."
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 focus:outline-none transition-all">
+                        <p id="anthropicKeyStatus" class="mt-1 text-[11px] text-gray-400">誘몄???/p>
+                    </div>
+                </div>
+                <p class="mt-2 text-[11px] text-gray-400">??λ맂 ?ㅻ뒗 ?ㅼ떆 ?쒖떆?섏? ?딆뒿?덈떎. 蹂寃쏀븷 ?뚮쭔 ???ㅻ? ?낅젰?섏꽭??</p>
+            </section>
+
+            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50">
+                <div class="flex items-center justify-between mb-5">
+                    <h3 class="font-black text-gray-800 dark:text-white text-lg">?쇱씪 ?먮룞 寃뚯떆</h3>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="autoPostEnabled" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                    </label>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">?ㅽ뻾 ?쒓컙</label>
+                        <input type="time" id="autoPostTime" value="09:00"
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">二쇱젣/移댄뀒怨좊━</label>
+                        <input type="text" id="autoPostCategory" value="IT, Tech, Trends"
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all">
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="autoPostNoHuman" checked class="w-4 h-4 text-indigo-500 rounded focus:ring-indigo-500">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">?대?吏 ?앹꽦 ???щ엺 ?쒖쇅</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="autoOpenPublishedPosts" checked class="w-4 h-4 text-indigo-500 rounded focus:ring-indigo-500">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">寃뚯떆 ?꾨즺 ???묒꽦??湲 ?먮룞 ?닿린</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="aiQualityEnabled" checked class="w-4 h-4 text-indigo-500 rounded focus:ring-indigo-500">
+                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">寃뚯떆 ??AI ?덉쭏 寃??諛??먮룞 媛쒖꽑</span>
+                    </label>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">AI ?덉쭏 理쒖냼 ?먯닔</label>
+                        <input type="number" id="aiQualityMinScore" min="50" max="100" value="82"
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">諛고룷 ???JSON</label>
+                        <input type="text" id="autoPostPlatforms" value='[{"language": "ko", "platform": "wordpress", "target_id": "wordpress"}]'
+                            class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-[11px] focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all font-mono">
+                    </div>
                 </div>
             </section>
 
-            <!-- WordPress -->
-            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50 hover:border-blue-500/30 transition-all">
-                <h3 class="font-black text-gray-800 dark:text-white mb-5 flex items-center gap-2 text-lg">
-                    🔵 WordPress
-                </h3>
+            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50">
+                <h3 class="font-black text-gray-800 dark:text-white mb-5 text-lg">WordPress</h3>
                 <div class="space-y-4">
-                    <div class="space-y-1.5">
-                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">사이트 URL</label>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">?ъ씠??URL</label>
                         <input type="text" id="wpUrl" placeholder="https://your-blog.com"
                             class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
                     </div>
-                    <div class="space-y-1.5">
-                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">사용자명</label>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">?ъ슜?먮챸</label>
                         <input type="text" id="wpUsername" placeholder="admin"
                             class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
                     </div>
-                    <div class="space-y-1.5">
-                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">앱 비밀번호</label>
-                        <input type="password" id="wpPassword" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx"
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">??鍮꾨?踰덊샇</label>
+                        <input type="password" id="wpPassword" placeholder="xxxx xxxx xxxx xxxx"
                             class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
                     </div>
                 </div>
             </section>
         </div>
 
-        <!-- Right Column -->
         <div class="space-y-6">
-            <!-- Telegram -->
-            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50 hover:border-sky-500/30 transition-all">
-                <h3 class="font-black text-gray-800 dark:text-white mb-5 flex items-center gap-2 text-lg">
-                    ✈️ Telegram (SNS)
-                </h3>
+            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50">
+                <h3 class="font-black text-gray-800 dark:text-white mb-5 text-lg">Telegram</h3>
                 <div class="space-y-4">
-                    <div class="space-y-1.5">
-                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">Bot Token</label>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Bot Token</label>
                         <input type="password" id="tgToken" placeholder="712345678:AAEf..."
                             class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 focus:outline-none transition-all">
                     </div>
-                    
                     <div class="border-t border-gray-100 dark:border-gray-700 pt-5">
                         <div class="flex items-center justify-between mb-4">
-                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">채널/그룹 목록</label>
-                            <button onclick="addTelegramChannelUI()" 
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">梨꾨꼸/洹몃９ 紐⑸줉</label>
+                            <button onclick="addTelegramChannelUI()"
                                 class="text-[10px] bg-sky-500/10 text-sky-500 px-3 py-1.5 rounded-lg hover:bg-sky-500/20 font-black transition-all">
-                                ＋ 추가
+                                異붽?
                             </button>
                         </div>
-                        <div id="tgChannelsContainer" class="space-y-2.5">
-                            <!-- Dynamic List -->
-                        </div>
+                        <div id="tgChannelsContainer" class="space-y-2.5"></div>
                         <input type="hidden" id="tgChatId">
                     </div>
-                    <p class="text-[10px] text-gray-400 font-medium leading-relaxed bg-gray-50 dark:bg-gray-900/30 p-3 rounded-xl">
-                        @BotFather에게 받은 토큰과 각 그룹/채널의 숫자 ID를 입력하세요. 메세지는 선택한 채널로 전송됩니다.
-                    </p>
                 </div>
             </section>
 
-            <!-- 구글 블로거 계정 목록 -->
-            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50 hover:border-orange-500/30 transition-all">
+            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50">
+                <h3 class="font-black text-gray-800 dark:text-white mb-5 text-lg">Social Publish</h3>
+                <div class="space-y-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <div id="socialHealthSummary" class="text-[11px] text-gray-400">??????곌껐 ?곹깭瑜??먭??????덉뒿?덈떎.</div>
+                        <button onclick="checkSocialConnections()"
+                            class="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-[10px] font-black rounded-lg shadow-lg shadow-indigo-500/20 transition-all active:scale-95">
+                            ?곌껐 ?먭?
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-1 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Facebook Page ID</label>
+                            <input type="text" id="facebookPageId" placeholder="1234567890"
+                                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Facebook Access Token</label>
+                            <input type="password" id="facebookAccessToken" placeholder="EAAB..."
+                                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Instagram Account ID</label>
+                            <input type="text" id="instagramAccountId" placeholder="1784..."
+                                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 focus:outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Instagram Access Token</label>
+                            <input type="password" id="instagramAccessToken" placeholder="IGQV..."
+                                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 focus:outline-none transition-all">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">TikTok Access Token</label>
+                            <input type="password" id="tiktokAccessToken" placeholder="act.example..."
+                                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:ring-2 focus:ring-gray-500/20 focus:border-gray-500 focus:outline-none transition-all">
+                        </div>
+                    </div>
+                    <div id="socialHealthDetails" class="space-y-2"></div>
+                    <p class="text-[11px] text-gray-400">Instagram/TikTok 寃뚯떆??怨듦컻 ?대?吏 URL???ы븿???ъ뒪?몄뿉?쒕쭔 ?숈옉?⑸땲?? TikTok? ???ъ궗 ?꾩뿉??鍮꾧났媛?寃뚯떆濡??쒗븳?????덉뒿?덈떎.</p>
+                </div>
+            </section>
+
+            <section class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700/50">
                 <div class="flex items-center justify-between mb-5">
-                    <h3 class="font-black text-gray-800 dark:text-white flex items-center gap-2 text-lg">
-                        🟠 Google Blogger
-                    </h3>
+                    <h3 class="font-black text-gray-800 dark:text-white text-lg">Google Blogger</h3>
                     <button onclick="openAddAccountModal()"
                         class="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-[10px] font-black rounded-lg shadow-lg shadow-orange-500/20 transition-all active:scale-95">
-                        ＋ 새 계정 추가
+                        계정 추가
                     </button>
                 </div>
-
                 <div id="accountList" class="space-y-3">
-                    <p class="text-xs text-gray-400 text-center py-4">불러오는 중...</p>
+                    {% if blogger_accounts and blogger_accounts|length > 0 %}
+                        {% for acc in blogger_accounts %}
+                        <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600" id="acc-{{ acc.id }}">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-sm text-gray-800 dark:text-white truncate">{{ acc.name }}</span>
+                                    <span class="shrink-0 text-[10px] {% if acc.refresh_token %}bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400{% else %}bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400{% endif %} px-2 py-0.5 rounded-full font-bold">
+                                        {% if acc.refresh_token %}연동됨{% else %}미연동{% endif %}
+                                    </span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <p class="text-[11px] text-gray-400">Blog ID: {{ acc.blog_id or '미설정' }}</p>
+                                    <span class="text-[11px] text-blue-500 dark:text-blue-400 font-medium">{{ acc.lang or 'ja' }}</span>
+                                </div>
+                            </div>
+                            <div class="flex gap-2 shrink-0">
+                                <button onclick="startOAuth({{ acc.id }})"
+                                    class="px-3 py-1.5 text-xs font-bold rounded-lg transition-colors {% if acc.refresh_token %}bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-600 dark:text-gray-300{% else %}bg-orange-500 hover:bg-orange-600 text-white{% endif %}">
+                                    {% if acc.refresh_token %}연동됨{% else %}Google 연동{% endif %}
+                                </button>
+                                <button onclick="deleteAccount({{ acc.id }}, decodeURIComponent('{{ (acc.name or '') | urlencode }}'))"
+                                    class="px-2 py-1.5 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                    삭제
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <p class="text-xs text-gray-400 text-center py-4">등록된 Blogger 계정이 없습니다.</p>
+                    {% endif %}
                 </div>
             </section>
         </div>
     </div>
 </div>
-</div>
 
-<!-- 새 계정 추가 모달 -->
-<div id="addAccountModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+<div id="addAccountModal" class="fixed inset-0 bg-black/60 z-50 hidden items-center justify-center p-4">
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md">
         <div class="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 class="font-bold text-gray-800 dark:text-white">🟠 구글 블로거 계정 추가</h3>
-            <button onclick="closeAddAccountModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">×</button>
+            <h3 class="font-bold text-gray-800 dark:text-white">Google Blogger 怨꾩젙 異붽?</h3>
+            <button onclick="closeAddAccountModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl leading-none">&times;</button>
         </div>
         <div class="p-5 space-y-4">
             <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">계정 이름 <span class="text-red-400">*</span></label>
-                <input type="text" id="newAccName" placeholder="예: 내 여행 블로그"
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">怨꾩젙 ?대쫫</label>
+                <input type="text" id="newAccName" placeholder="예: 일본 여행 블로그"
                     class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Blog ID <span class="text-red-400">*</span></label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Blog ID</label>
                 <input type="text" id="newAccBlogId" placeholder="1234567890123456789"
                     class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
-                <p class="text-[11px] text-gray-400 mt-1">Blogger 주소창 URL의 숫자 ID</p>
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Google OAuth Client ID</label>
-                <input type="text" id="newAccClientId" placeholder="비워두면 전역 설정 사용"
+                <input type="text" id="newAccClientId" placeholder="클라이언트 ID를 입력하세요"
                     class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
             </div>
             <div>
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Google OAuth Client Secret</label>
-                <input type="password" id="newAccClientSecret" placeholder="비워두면 전역 설정 사용"
+                <input type="password" id="newAccClientSecret" placeholder="클라이언트 Secret을 입력하세요"
                     class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
             </div>
             <div>
-                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">게시 언어 (자동 번역)</label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">寃뚯떆 ?몄뼱</label>
                 <select id="newAccLang"
                     class="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none">
-                    <option value="ja">🇯🇵 일본어 (Japanese)</option>
-                    <option value="en">🇺🇸 영어 (English)</option>
-                    <option value="es">🇪🇸 스페인어 (Spanish)</option>
-                    <option value="de">🇩🇪 독일어 (German)</option>
-                    <option value="fr">🇫🇷 프랑스어 (French)</option>
-                    <option value="it">🇮🇹 이탈리아어 (Italian)</option>
-                    <option value="pt">🇧🇷 포르투갈어 (Portuguese)</option>
-                    <option value="id">🇮🇩 인도네시아어 (Indonesian)</option>
-                    <option value="ar">🇸🇦 아랍어 (Arabic)</option>
-                    <option value="ko">🇰🇷 한국어 (Korean)</option>
-                    <option value="vi">🇻🇳 베트남어 (Vietnamese)</option>
+                    <option value="ja">Japanese</option>
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="de">German</option>
+                    <option value="fr">French</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="id">Indonesian</option>
+                    <option value="ar">Arabic</option>
+                    <option value="ko">Korean</option>
+                    <option value="vi">Vietnamese</option>
                 </select>
             </div>
         </div>
         <div class="p-5 pt-0 flex gap-3">
             <button onclick="createAccount()"
                 class="flex-1 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm rounded-lg transition-colors">
-                계정 추가
+                怨꾩젙 異붽?
             </button>
             <button onclick="closeAddAccountModal()"
                 class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
-                취소
+                痍⑥냼
             </button>
         </div>
     </div>
@@ -171,26 +292,302 @@
 
 {% block scripts %}
 <script>
-    // ── Telegram 다중 채널 관리 ─────────────────────────
+    const LANGUAGE_LABELS = {
+        ja: 'Japanese',
+        en: 'English',
+        es: 'Spanish',
+        de: 'German',
+        fr: 'French',
+        it: 'Italian',
+        pt: 'Portuguese',
+        id: 'Indonesian',
+        ar: 'Arabic',
+        ko: 'Korean',
+        vi: 'Vietnamese'
+    };
     let telegramChannels = [];
+    let aiModelOptions = {};
+    let socialHealthCache = null;
+    let apiKeysData = null;
+
+    function escapeHtml(value) {
+        return String(value || '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function asBooleanSetting(value, defaultValue = false) {
+        if (value === undefined || value === null || value === '') return defaultValue;
+        if (typeof value === 'boolean') return value;
+        return String(value).toLowerCase() === 'true';
+    }
+
+    function getProviderLabel(provider) {
+        return {
+            gemini: 'Gemini',
+            openai: 'OpenAI GPT',
+            anthropic: 'Claude',
+        }[String(provider || 'gemini').toLowerCase()] || 'Gemini';
+    }
+
+    function getActiveKeyState(provider, data) {
+        const keyMap = {
+            gemini: data?.gemini,
+            openai: data?.openai,
+            anthropic: data?.anthropic,
+        };
+        return keyMap[String(provider || 'gemini').toLowerCase()] || null;
+    }
+
+    function updateWriterEngineSummary(data = null) {
+        if (data) {
+            apiKeysData = data;
+        } else {
+            data = apiKeysData;
+        }
+        let summaryEl = document.getElementById('writerEngineSummary');
+        if (!summaryEl) {
+            const providerSelect = document.getElementById('aiTextProvider');
+            const card = providerSelect ? providerSelect.closest('section') : null;
+            const marker = card ? card.querySelector('.space-y-4') : null;
+            if (card && marker) {
+                summaryEl = document.createElement('div');
+                summaryEl.id = 'writerEngineSummary';
+                summaryEl.className = 'mb-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100';
+                summaryEl.textContent = '현재 사용 중인 AI: 로딩 중...';
+                card.insertBefore(summaryEl, marker);
+            } else {
+                return;
+            }
+        }
+
+        const provider = document.getElementById('aiTextProvider')?.value || data?.ai_text_provider?.value || 'gemini';
+        const model = document.getElementById('aiTextModel')?.value || data?.ai_text_model?.value || '';
+        const keyState = getActiveKeyState(provider, data);
+        const providerLabel = getProviderLabel(provider);
+        const keyText = keyState?.set ? (keyState.masked || 'saved') : 'missing';
+
+        summaryEl.innerHTML = `
+            <div class="font-bold text-cyan-100">현재 사용 중인 AI: ${providerLabel}${model ? ` / ${model}` : ''}</div>
+            <div class="mt-1 text-xs text-cyan-50/80">활성 키: ${keyText}</div>
+        `;
+    }
+
+    function setSecretFieldState(inputEl, statusEl, keyState, fallbackPlaceholder) {
+        if (!inputEl) return;
+        inputEl.value = '';
+        if (keyState?.set) {
+            const masked = keyState.masked || fallbackPlaceholder || '';
+            inputEl.placeholder = masked;
+            if (statusEl) {
+                statusEl.textContent = `저장됨 · ${masked}`;
+                statusEl.className = 'mt-1 text-[11px] text-emerald-400';
+            }
+        } else {
+            inputEl.placeholder = fallbackPlaceholder || inputEl.placeholder;
+            if (statusEl) {
+                statusEl.textContent = '미저장';
+                statusEl.className = 'mt-1 text-[11px] text-gray-400';
+            }
+        }
+    }
+
+    function normalizeJsonTextareaValue(value, fallback = '[]') {
+        if (value === null || value === undefined || value === '') return fallback;
+        if (typeof value === 'string') {
+            try {
+                JSON.parse(value);
+                return value;
+            } catch (e) {
+                return fallback;
+            }
+        }
+        try {
+            return JSON.stringify(value, null, 2);
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    function repairSettingsText() {
+        const setText = (target, text) => {
+            const el = typeof target === 'string' ? document.querySelector(target) : target;
+            if (el) el.textContent = text;
+        };
+        const setLabelForInput = (inputId, text) => {
+            const input = document.getElementById(inputId);
+            const label = input?.closest('div')?.querySelector('label');
+            if (label) label.textContent = text;
+        };
+        const sectionBySelector = (selector) => Array.from(document.querySelectorAll('.max-w-5xl section')).find((section) => section.querySelector(selector));
+
+        setText('.max-w-5xl h2', '설정');
+        setText('button[onclick="saveApiSettings()"]', '모든 설정 저장');
+
+        const aiSection = sectionBySelector('#aiTextProvider');
+        if (aiSection) {
+            setText(aiSection.querySelector('h3'), '글쓰기 AI');
+            const labels = aiSection.querySelectorAll('label');
+            if (labels[0]) labels[0].textContent = '프로바이더';
+            if (labels[1]) labels[1].textContent = '작성 모델';
+            if (labels[2]) labels[2].textContent = 'Gemini API Key';
+            if (labels[3]) labels[3].textContent = 'OpenAI API Key';
+            if (labels[4]) labels[4].textContent = 'Anthropic API Key';
+            const paras = aiSection.querySelectorAll('p');
+            if (paras[0]) paras[0].textContent = '미저장';
+            if (paras[1]) paras[1].textContent = '미저장';
+            if (paras[2]) paras[2].textContent = '미저장';
+            if (paras[3]) paras[3].textContent = '저장된 키는 다시 표시하지 않습니다. 변경할 때만 새 키를 입력하세요.';
+        }
+
+        const autoSection = sectionBySelector('#autoPostEnabled');
+        if (autoSection) {
+            setText(autoSection.querySelector('h3'), '일일 자동 게시');
+            setLabelForInput('autoPostTime', '실행 시간');
+            setLabelForInput('autoPostCategory', '주제/카테고리');
+            setLabelForInput('aiQualityMinScore', 'AI 품질 최소 점수');
+            setLabelForInput('autoPostPlatforms', '배포 대상 JSON');
+            const checkboxLabels = autoSection.querySelectorAll('label.flex.items-center.gap-2.cursor-pointer span');
+            if (checkboxLabels[0]) checkboxLabels[0].textContent = '이미지 생성 시 사람 제외';
+            if (checkboxLabels[1]) checkboxLabels[1].textContent = '게시 완료 후 작성된 글 자동 열기';
+            if (checkboxLabels[2]) checkboxLabels[2].textContent = '게시 전 AI 품질 검사 및 자동 개선';
+        }
+
+        const wpSection = sectionBySelector('#wpUrl');
+        if (wpSection) {
+            setText(wpSection.querySelector('h3'), 'WordPress');
+            setLabelForInput('wpUrl', '사이트 URL');
+            setLabelForInput('wpUsername', '사용자명');
+            setLabelForInput('wpPassword', '관리자 비밀번호');
+        }
+
+        const telegramSection = sectionBySelector('#tgToken');
+        if (telegramSection) {
+            setText(telegramSection.querySelector('h3'), 'Telegram');
+            setLabelForInput('tgToken', 'Bot Token');
+            const channelsLabel = telegramSection.querySelector('.border-t label');
+            if (channelsLabel) channelsLabel.textContent = '채널/그룹 목록';
+            const addBtn = telegramSection.querySelector('button[onclick="addTelegramChannelUI()"]');
+            if (addBtn) addBtn.textContent = '추가';
+        }
+
+        const socialSection = sectionBySelector('#socialHealthSummary');
+        if (socialSection) {
+            setText(socialSection.querySelector('h3'), '소셜 게시');
+            setText(socialSection.querySelector('#socialHealthSummary'), '소셜 계정 연결 상태를 확인할 수 있습니다.');
+            const checkBtn = socialSection.querySelector('button[onclick="checkSocialConnections()"]');
+            if (checkBtn) checkBtn.textContent = '연결 점검';
+            const labels = socialSection.querySelectorAll('label');
+            if (labels[0]) labels[0].textContent = 'Facebook Page ID';
+            if (labels[1]) labels[1].textContent = 'Facebook Access Token';
+            if (labels[2]) labels[2].textContent = 'Instagram Account ID';
+            if (labels[3]) labels[3].textContent = 'Instagram Access Token';
+            if (labels[4]) labels[4].textContent = 'TikTok Access Token';
+            const note = socialSection.querySelectorAll('p');
+            if (note.length > 0) {
+                note[note.length - 1].textContent = 'Instagram/TikTok 게시물은 공개 이미지 URL이 포함된 포스트에서만 동작합니다. TikTok은 일부 환경에서 비공개 게시가 제한될 수 있습니다.';
+            }
+        }
+
+        const bloggerSection = sectionBySelector('#accountList');
+        if (bloggerSection) {
+            setText(bloggerSection.querySelector('h3'), 'Google Blogger');
+            const addAccountBtn = bloggerSection.querySelector('button[onclick="openAddAccountModal()"]');
+            if (addAccountBtn) addAccountBtn.textContent = '계정 추가';
+            const emptyState = bloggerSection.querySelector('#accountList p');
+            if (emptyState) emptyState.textContent = '등록된 Blogger 계정이 없습니다.';
+        }
+
+        const modal = document.getElementById('addAccountModal');
+        if (modal) {
+            setText(modal.querySelector('.p-5.border-b h3'), 'Google Blogger 계정 추가');
+            const labels = modal.querySelectorAll('label');
+            if (labels[0]) labels[0].textContent = '계정 이름';
+            if (labels[1]) labels[1].textContent = 'Blog ID';
+            if (labels[2]) labels[2].textContent = 'Google OAuth Client ID';
+            if (labels[3]) labels[3].textContent = 'Google OAuth Client Secret';
+            if (labels[4]) labels[4].textContent = '게시 언어';
+            const nameInput = modal.querySelector('#newAccName');
+            if (nameInput) nameInput.placeholder = '예: 일본 여행 블로그';
+            const inputs = modal.querySelectorAll('input');
+            if (inputs[2]) inputs[2].placeholder = '클라이언트 ID를 입력하세요';
+            if (inputs[3]) inputs[3].placeholder = '클라이언트 Secret을 입력하세요';
+            const buttons = modal.querySelectorAll('button');
+            if (buttons[1]) buttons[1].textContent = '계정 추가';
+            if (buttons[2]) buttons[2].textContent = '취소';
+        }
+    }
+
+    function renderSocialHealth(results = null) {
+        const summaryEl = document.getElementById('socialHealthSummary');
+        const detailsEl = document.getElementById('socialHealthDetails');
+        if (!summaryEl || !detailsEl) return;
+
+        if (!results) {
+            summaryEl.textContent = '??????곌껐 ?곹깭瑜??먭??????덉뒿?덈떎.';
+            detailsEl.innerHTML = '';
+            return;
+        }
+
+        const entries = [
+            ['facebook', 'Facebook'],
+            ['instagram', 'Instagram'],
+            ['tiktok', 'TikTok']
+        ];
+        const okCount = entries.filter(([key]) => results[key]?.status === 'ok').length;
+        summaryEl.textContent = `?곌껐 ?먭? ?꾨즺: ${okCount}/${entries.length} ?뺤긽`;
+        detailsEl.innerHTML = entries.map(([key, label]) => {
+            const item = results[key] || { status: 'error', message: '?곹깭 ?놁쓬' };
+            const isOk = item.status === 'ok';
+            const badgeClass = isOk
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+            return `
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs flex items-start gap-3">
+                    <span class="px-2 py-0.5 rounded-full font-black ${badgeClass}">${isOk ? '?뺤긽' : '?ㅻ쪟'}</span>
+                    <div class="min-w-0">
+                        <div class="font-bold text-gray-700 dark:text-gray-200">${label}</div>
+                        <div class="text-gray-500 dark:text-gray-400 break-all">${escapeHtml(item.message || '')}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function checkSocialConnections() {
+        const summaryEl = document.getElementById('socialHealthSummary');
+        try {
+            if (summaryEl) summaryEl.textContent = '?곌껐 ?곹깭 ?먭? 以?..';
+            const res = await fetch('/api/settings/social-health');
+            const data = await res.json();
+            socialHealthCache = data;
+            renderSocialHealth(data);
+            Utils.showToast('?뚯뀥 ?곌껐 ?곹깭 ?먭????꾨즺?섏뿀?듬땲??', 'success');
+        } catch (e) {
+            renderSocialHealth(null);
+            Utils.showToast('?뚯뀥 ?곌껐 ?곹깭 ?먭? ?ㅽ뙣', 'error');
+        }
+    }
 
     function renderTelegramChannels() {
         const container = document.getElementById('tgChannelsContainer');
         if (telegramChannels.length === 0) {
-            container.innerHTML = `<p class="text-[10px] text-gray-400 italic py-2">등록된 채널이 없습니다.</p>`;
+            container.innerHTML = '<p class="text-[10px] text-gray-400 italic py-2">?깅줉??梨꾨꼸???놁뒿?덈떎.</p>';
             return;
         }
         container.innerHTML = telegramChannels.map((ch, idx) => `
             <div class="flex items-center gap-2 group">
-                <input type="text" placeholder="이름 (예: 공지방)" value="${ch.name || ''}" 
+                <input type="text" placeholder="?대쫫" value="${escapeHtml(ch.name)}"
                     oninput="updateTelegramChannel(${idx}, 'name', this.value)"
                     class="flex-1 px-2 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none">
-                <input type="text" placeholder="Chat ID" value="${ch.chat_id || ''}" 
+                <input type="text" placeholder="Chat ID" value="${escapeHtml(ch.chat_id)}"
                     oninput="updateTelegramChannel(${idx}, 'chat_id', this.value)"
                     class="w-32 px-2 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded text-xs font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none">
-                <button onclick="removeTelegramChannel(${idx})" class="p-1.5 text-gray-300 hover:text-red-500 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                </button>
+                <button onclick="removeTelegramChannel(${idx})" class="px-2 py-1 text-xs text-red-400 hover:text-red-600">??젣</button>
             </div>
         `).join('');
     }
@@ -209,125 +606,183 @@
         renderTelegramChannels();
     }
 
-    // ── 초기 로드 ──────────────────────────────────────
+    function renderAiModelOptions(provider, selectedModel = '') {
+        const modelSelect = document.getElementById('aiTextModel');
+        const options = aiModelOptions[provider] || [];
+        modelSelect.innerHTML = options.map(model => `
+            <option value="${escapeHtml(model.id)}" ${model.id === selectedModel ? 'selected' : ''}>
+                ${escapeHtml(model.label || model.id)}
+            </option>
+        `).join('');
+
+        if (!modelSelect.value && options.length > 0) {
+            modelSelect.value = options[0].id;
+        }
+    }
+
+    function onAiProviderChange() {
+        const provider = document.getElementById('aiTextProvider').value;
+        renderAiModelOptions(provider);
+        updateWriterEngineSummary();
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
+        repairSettingsText();
         await loadApiSettings();
         await loadAccounts();
     });
 
-    // ── API 설정 불러오기 ──────────────────────────────
     async function loadApiSettings() {
         try {
             const res = await fetch('/api/settings/keys');
             const data = await res.json();
-            document.getElementById('geminiKey').value = data.gemini?.value || '';
+            const geminiInput = document.getElementById('geminiKey');
+            const openaiInput = document.getElementById('openaiKey');
+            const anthropicInput = document.getElementById('anthropicKey');
+            const wpPasswordInput = document.getElementById('wpPassword');
+            const tgTokenInput = document.getElementById('tgToken');
+            const geminiStatus = document.getElementById('geminiKeyStatus');
+            const openaiStatus = document.getElementById('openaiKeyStatus');
+            const anthropicStatus = document.getElementById('anthropicKeyStatus');
+
+            setSecretFieldState(geminiInput, geminiStatus, data.gemini, 'AIzaSy...');
+            setSecretFieldState(openaiInput, openaiStatus, data.openai, 'sk-...');
+            setSecretFieldState(anthropicInput, anthropicStatus, data.anthropic, 'sk-ant-...');
+            setSecretFieldState(wpPasswordInput, null, data.wp_password, 'Saved password');
+            setSecretFieldState(tgTokenInput, null, data.telegram_token, 'Saved token');
+
+            aiModelOptions = data.ai_text_model_options?.value || {};
+            const selectedProvider = data.ai_text_provider?.value || 'gemini';
+            const selectedModel = data.ai_text_model?.value || '';
+            document.getElementById('aiTextProvider').value = selectedProvider;
+            renderAiModelOptions(selectedProvider, selectedModel);
+            updateWriterEngineSummary(data);
+
             document.getElementById('wpUrl').value = data.wp_url?.value || '';
             document.getElementById('wpUsername').value = data.wp_username?.value || '';
-            document.getElementById('wpPassword').value = data.wp_password?.value || '';
-            document.getElementById('tgToken').value = data.telegram_token?.value || '';
             document.getElementById('tgChatId').value = data.telegram_chat_id?.value || '';
-            
-            // Telegram Channels List
+            document.getElementById('facebookPageId').value = data.facebook_page_id?.value || '';
+            document.getElementById('instagramAccountId').value = data.instagram_account_id?.value || '';
+
             try {
                 const channelsVal = data.telegram_channels?.value;
                 telegramChannels = (typeof channelsVal === 'string') ? JSON.parse(channelsVal || '[]') : (channelsVal || []);
-            } catch(e) { telegramChannels = []; }
+            } catch (e) {
+                telegramChannels = [];
+            }
             renderTelegramChannels();
-        } catch (e) { console.error('설정 로드 실패', e); }
+
+            document.getElementById('autoPostEnabled').checked = asBooleanSetting(data.auto_post_enabled?.value, false);
+            document.getElementById('autoPostTime').value = data.auto_post_time?.value || '09:00';
+            document.getElementById('autoPostCategory').value = data.auto_post_category?.value || 'IT, Tech, Trends';
+            document.getElementById('autoPostNoHuman').checked = asBooleanSetting(data.auto_post_no_human?.value, true);
+            document.getElementById('autoOpenPublishedPosts').checked = asBooleanSetting(data.auto_open_published_posts?.value, true);
+            document.getElementById('aiQualityEnabled').checked = asBooleanSetting(data.ai_quality_enabled?.value, true);
+            document.getElementById('aiQualityMinScore').value = data.ai_quality_min_score?.value || '82';
+            document.getElementById('autoPostPlatforms').value = normalizeJsonTextareaValue(
+                data.auto_post_platforms?.value,
+                '[{"language": "ko", "platform": "wordpress", "target_id": "wordpress"}]'
+            );
+            renderSocialHealth(socialHealthCache);
+        } catch (e) {
+            console.error('Settings load failed', e);
+            Utils.showToast('?ㅼ젙??遺덈윭?ㅼ? 紐삵뻽?듬땲??', 'error');
+        }
     }
 
-    // ── API 설정 저장 ──────────────────────────────────
     async function saveApiSettings() {
         const btn = document.querySelector('button[onclick="saveApiSettings()"]');
         const originalText = btn.innerHTML;
-        
         try {
             btn.disabled = true;
-            btn.innerHTML = '<span>⏳ 저장 중...</span>';
-
+            btn.innerHTML = '<span>???以?..</span>';
             const body = {
                 gemini_api_key: document.getElementById('geminiKey').value.trim(),
+                openai_api_key: document.getElementById('openaiKey').value.trim(),
+                anthropic_api_key: document.getElementById('anthropicKey').value.trim(),
+                ai_text_provider: document.getElementById('aiTextProvider').value,
+                ai_text_model: document.getElementById('aiTextModel').value,
                 wp_url: document.getElementById('wpUrl').value.trim(),
                 wp_username: document.getElementById('wpUsername').value.trim(),
                 wp_password: document.getElementById('wpPassword').value.trim(),
                 telegram_token: document.getElementById('tgToken').value.trim(),
                 telegram_chat_id: document.getElementById('tgChatId').value.trim(),
                 telegram_channels: telegramChannels,
+                facebook_page_id: document.getElementById('facebookPageId').value.trim(),
+                facebook_access_token: document.getElementById('facebookAccessToken').value.trim(),
+                instagram_account_id: document.getElementById('instagramAccountId').value.trim(),
+                instagram_access_token: document.getElementById('instagramAccessToken').value.trim(),
+                tiktok_access_token: document.getElementById('tiktokAccessToken').value.trim(),
+                auto_post_enabled: document.getElementById('autoPostEnabled').checked ? 'true' : 'false',
+                auto_post_time: document.getElementById('autoPostTime').value.trim(),
+                auto_post_category: document.getElementById('autoPostCategory').value.trim(),
+                auto_post_no_human: document.getElementById('autoPostNoHuman').checked ? 'true' : 'false',
+                auto_open_published_posts: document.getElementById('autoOpenPublishedPosts').checked ? 'true' : 'false',
+                ai_quality_enabled: document.getElementById('aiQualityEnabled').checked ? 'true' : 'false',
+                ai_quality_min_score: document.getElementById('aiQualityMinScore').value.trim() || '82',
+                auto_post_platforms: (() => {
+                    const raw = document.getElementById('autoPostPlatforms').value.trim();
+                    try {
+                        return JSON.stringify(JSON.parse(raw));
+                    } catch (e) {
+                        throw new Error('배포 대상 JSON이 올바르지 않습니다.');
+                    }
+                })()
             };
-
-            console.log('[Settings] Saving payload:', body);
-
             const res = await fetch('/api/settings/keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             });
-
-            if (res.ok) {
-                Utils.showToast('모든 설정이 성공적으로 저장되었습니다.', 'success');
-                // 저장 후 최신 상태 다시 로드 (UI 동기화)
-                await loadApiSettings();
-            } else {
+            if (!res.ok) {
                 const err = await res.json();
-                throw new Error(err.error || '서버 오류');
+                throw new Error(err.error || '?쒕쾭 ?ㅻ쪟');
             }
+            Utils.showToast('?ㅼ젙????λ릺?덉뒿?덈떎.', 'success');
+            await loadApiSettings();
+            await checkSocialConnections();
         } catch (e) {
-            console.error('[Settings] Save Failed:', e);
-            Utils.showToast('저장 실패: ' + e.message, 'error');
+            Utils.showToast('????ㅽ뙣: ' + e.message, 'error');
         } finally {
             btn.disabled = false;
             btn.innerHTML = originalText;
         }
     }
 
-    // ── 계정 목록 불러오기 ────────────────────────────
     async function loadAccounts() {
         const container = document.getElementById('accountList');
         try {
             const res = await fetch('/api/blog/accounts');
             const data = await res.json();
             const accounts = data.accounts || [];
-
             if (accounts.length === 0) {
-                container.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">아직 연동된 구글 블로거 계정이 없습니다.<br>위 버튼으로 계정을 추가하세요.</p>`;
+                container.innerHTML = '<p class="text-xs text-gray-400 text-center py-6">?깅줉??Blogger 怨꾩젙???놁뒿?덈떎.</p>';
                 return;
             }
-
             container.innerHTML = accounts.map(acc => `
-                <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600" id="acc-${acc.id}">
+                <div class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600" id="acc-${Number(acc.id)}">
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-2">
-                            <span class="font-bold text-sm text-gray-800 dark:text-white truncate">${acc.name}</span>
+                            <span class="font-bold text-sm text-gray-800 dark:text-white truncate">${escapeHtml(acc.name)}</span>
                             ${acc.connected
-                                ? `<span class="shrink-0 text-[10px] bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">✓ 연동됨</span>`
-                                : `<span class="shrink-0 text-[10px] bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 px-2 py-0.5 rounded-full font-bold">미연동</span>`
+                                ? '<span class="shrink-0 text-[10px] bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full font-bold">연동됨</span>'
+                                : '<span class="shrink-0 text-[10px] bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 px-2 py-0.5 rounded-full font-bold">미연동</span>'
                             }
                         </div>
-                        <div class="flex items-center gap-2 mt-0.5">
-                            <p class="text-[11px] text-gray-400">Blog ID: ${acc.blog_id || '미설정'}</p>
-                            <span class="text-[10px] text-gray-300">|</span>
-                            <select onchange="updateAccountLang(${acc.id}, this.value)" 
+                        <div class="flex items-center gap-2 mt-1">
+                            <p class="text-[11px] text-gray-400">Blog ID: ${escapeHtml(acc.blog_id || '미설정')}</p>
+                            <select onchange="updateAccountLang(${Number(acc.id)}, this.value)"
                                 class="bg-transparent text-[11px] text-blue-500 dark:text-blue-400 border-none p-0 focus:ring-0 cursor-pointer font-medium">
-                                <option value="ja" ${acc.lang === 'ja' ? 'selected' : ''}>🇯🇵 일본어</option>
-                                <option value="en" ${acc.lang === 'en' ? 'selected' : ''}>🇺🇸 영어</option>
-                                <option value="es" ${acc.lang === 'es' ? 'selected' : ''}>🇪🇸 스페인어</option>
-                                <option value="de" ${acc.lang === 'de' ? 'selected' : ''}>🇩🇪 독일어</option>
-                                <option value="fr" ${acc.lang === 'fr' ? 'selected' : ''}>🇫🇷 프랑스어</option>
-                                <option value="it" ${acc.lang === 'it' ? 'selected' : ''}>🇮🇹 이탈리아어</option>
-                                <option value="pt" ${acc.lang === 'pt' ? 'selected' : ''}>🇧🇷 포르투갈어</option>
-                                <option value="id" ${acc.lang === 'id' ? 'selected' : ''}>🇮🇩 인도네시아어</option>
-                                <option value="ar" ${acc.lang === 'ar' ? 'selected' : ''}>🇸🇦 아랍어</option>
-                                <option value="ko" ${acc.lang === 'ko' ? 'selected' : ''}>🇰🇷 한국어</option>
-                                <option value="vi" ${acc.lang === 'vi' ? 'selected' : ''}>🇻🇳 베트남어</option>
+                                ${Object.entries(LANGUAGE_LABELS).map(([code, label]) => `<option value="${code}" ${acc.lang === code ? 'selected' : ''}>${label}</option>`).join('')}
                             </select>
                         </div>
                     </div>
                     <div class="flex gap-2 shrink-0">
-                        <button onclick="startOAuth(${acc.id})"
+                        <button onclick="startOAuth(${Number(acc.id)})"
                             class="px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${acc.connected ? 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-600 dark:text-gray-300' : 'bg-orange-500 hover:bg-orange-600 text-white'}">
-                            ${acc.connected ? '재연동' : 'Google 연동'}
+                            ${acc.connected ? '연동됨' : 'Google 연동'}
                         </button>
-                        <button onclick="deleteAccount(${acc.id}, '${acc.name.replace(/'/g, "\\'")}')"
+                        <button onclick="deleteAccount(${Number(acc.id)}, decodeURIComponent('${encodeURIComponent(acc.name || '')}'))"
                             class="px-2 py-1.5 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                             삭제
                         </button>
@@ -335,36 +790,35 @@
                 </div>
             `).join('');
         } catch (e) {
-            container.innerHTML = `<p class="text-xs text-red-400 text-center py-4">계정 목록 로드 실패</p>`;
+            container.innerHTML = '<p class="text-xs text-red-400 text-center py-4">계정 목록을 불러오지 못했습니다.</p>';
         }
     }
 
-    // ── 모달 열기/닫기 ────────────────────────────────
     function openAddAccountModal() {
-        document.getElementById('addAccountModal').classList.remove('hidden');
-        document.getElementById('addAccountModal').classList.add('flex');
+        const modal = document.getElementById('addAccountModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
         document.getElementById('newAccName').focus();
     }
 
     function closeAddAccountModal() {
-        document.getElementById('addAccountModal').classList.add('hidden');
-        document.getElementById('addAccountModal').classList.remove('flex');
+        const modal = document.getElementById('addAccountModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
         ['newAccName', 'newAccBlogId', 'newAccClientId', 'newAccClientSecret'].forEach(id => {
             document.getElementById(id).value = '';
         });
         document.getElementById('newAccLang').value = 'ja';
     }
 
-    // ── 계정 생성 ──────────────────────────────────────
     async function createAccount() {
         const name = document.getElementById('newAccName').value.trim();
         const blogId = document.getElementById('newAccBlogId').value.trim();
         const clientId = document.getElementById('newAccClientId').value.trim();
         const clientSecret = document.getElementById('newAccClientSecret').value.trim();
         const lang = document.getElementById('newAccLang').value;
-
-        if (!name) { Utils.showToast('계정 이름을 입력하세요', 'warning'); return; }
-        if (!blogId) { Utils.showToast('Blog ID를 입력하세요', 'warning'); return; }
+        if (!name) { Utils.showToast('계정 이름을 입력하세요.', 'warning'); return; }
+        if (!blogId) { Utils.showToast('Blog ID를 입력하세요.', 'warning'); return; }
 
         try {
             const res = await fetch('/api/blog/accounts', {
@@ -372,16 +826,15 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, blog_id: blogId, client_id: clientId, client_secret: clientSecret, lang })
             });
-            const data = await res.json();
+            if (!res.ok) throw new Error('계정 추가 실패');
             closeAddAccountModal();
             await loadAccounts();
-            Utils.showToast(`"${name}" 계정이 추가됐습니다. Google 연동 버튼을 눌러 인증하세요.`, 'success');
+            Utils.showToast('계정이 추가되었습니다. Google 연동을 진행하세요.', 'success');
         } catch (e) {
-            Utils.showToast('계정 추가 실패', 'error');
+            Utils.showToast('怨꾩젙 異붽? ?ㅽ뙣', 'error');
         }
     }
 
-    // ── 언어 변경 ──────────────────────────────────────
     async function updateAccountLang(id, newLang) {
         try {
             const res = await fetch(`/api/blog/accounts/${id}`, {
@@ -389,44 +842,39 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ lang: newLang })
             });
-            if (res.ok) {
-                Utils.showToast('언어 설정이 변경되었습니다.', 'success');
-            } else {
-                throw new Error('변경 실패');
-            }
+            if (!res.ok) throw new Error('蹂寃??ㅽ뙣');
+            Utils.showToast('언어 설정이 변경되었습니다.', 'success');
         } catch (e) {
             Utils.showToast('언어 변경 실패', 'error');
-            await loadAccounts(); // 원래대로 복구
+            await loadAccounts();
         }
     }
 
-    // ── OAuth 연동 ────────────────────────────────────
     function startOAuth(accountId) {
         window.open(`/api/blog/accounts/${accountId}/oauth/start`, '_blank', 'width=600,height=700');
-        // 팝업 닫힌 후 목록 갱신 (폴링)
         const poll = setInterval(async () => {
             const res = await fetch(`/api/blog/accounts/${accountId}/status`);
             const data = await res.json();
             if (data.connected) {
                 clearInterval(poll);
                 await loadAccounts();
-                Utils.showToast(`"${data.name}" 연동 완료!`, 'success');
+                Utils.showToast(`"${data.name}" 연동 완료`, 'success');
             }
         }, 2000);
-        // 최대 2분 후 폴링 중단
         setTimeout(() => clearInterval(poll), 120000);
     }
 
-    // ── 계정 삭제 ──────────────────────────────────────
     async function deleteAccount(id, name) {
-        if (!confirm(`"${name}" 계정을 삭제할까요?\n연동 정보도 모두 삭제됩니다.`)) return;
+        if (!confirm(`"${name}" 계정을 삭제할까요?`)) return;
         try {
             await fetch(`/api/blog/accounts/${id}`, { method: 'DELETE' });
             await loadAccounts();
-            Utils.showToast('삭제됐습니다', 'success');
+            Utils.showToast('삭제되었습니다.', 'success');
         } catch (e) {
             Utils.showToast('삭제 실패', 'error');
         }
     }
 </script>
 {% endblock %}
+
+

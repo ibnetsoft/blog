@@ -65,6 +65,7 @@ def init_db():
             prompt_ko TEXT,
             prompt_en TEXT,
             image_url TEXT,
+            video_url TEXT,
             local_path TEXT,
             caption TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -90,11 +91,119 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS ai_quality_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            platform TEXT,
+            language TEXT,
+            original_title TEXT,
+            improved_title TEXT,
+            score INTEGER,
+            issues TEXT,
+            improvements TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS openclaw_campaigns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            category TEXT,
+            default_language TEXT DEFAULT 'ko',
+            ai_provider TEXT DEFAULT 'gemini',
+            ai_model TEXT DEFAULT 'gemini-3.5-flash',
+            platforms_json TEXT NOT NULL,
+            schedule_type TEXT DEFAULT 'daily',
+            schedule_time TEXT DEFAULT '09:00',
+            timezone TEXT DEFAULT 'Asia/Seoul',
+            topic_mode TEXT DEFAULT 'trend',
+            approval_mode TEXT DEFAULT 'auto',
+            quality_min_score INTEGER DEFAULT 82,
+            image_policy_json TEXT DEFAULT '{}',
+            prompt_profile_json TEXT DEFAULT '{}',
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS openclaw_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            topic TEXT,
+            status TEXT DEFAULT 'queued',
+            current_stage TEXT DEFAULT 'queued',
+            approval_required INTEGER DEFAULT 0,
+            started_at TIMESTAMP,
+            completed_at TIMESTAMP,
+            error_message TEXT,
+            summary_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (campaign_id) REFERENCES openclaw_campaigns(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS openclaw_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            task_type TEXT NOT NULL,
+            target_id TEXT,
+            status TEXT DEFAULT 'queued',
+            attempt_count INTEGER DEFAULT 0,
+            max_attempts INTEGER DEFAULT 3,
+            input_json TEXT,
+            output_json TEXT,
+            error_message TEXT,
+            next_retry_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES openclaw_runs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS approval_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            task_id INTEGER,
+            target_id TEXT,
+            title TEXT,
+            summary TEXT,
+            content_html TEXT,
+            status TEXT DEFAULT 'pending',
+            reviewer TEXT,
+            review_note TEXT,
+            approved_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES openclaw_runs(id),
+            FOREIGN KEY (task_id) REFERENCES openclaw_tasks(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS content_variants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            target_id TEXT NOT NULL,
+            platform TEXT NOT NULL,
+            language TEXT NOT NULL,
+            title TEXT,
+            summary TEXT,
+            tags_json TEXT,
+            content_html TEXT,
+            images_json TEXT,
+            quality_score INTEGER,
+            quality_report_json TEXT,
+            publish_status TEXT DEFAULT 'draft',
+            publish_url TEXT,
+            publish_post_id TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (run_id) REFERENCES openclaw_runs(id)
+        );
     """)
 
     # 기본 글로벌 설정 초기화
     defaults = [
         ("gemini", ""),
+        ("openai_api_key", ""),
+        ("anthropic_api_key", ""),
+        ("ai_text_provider", "gemini"),
+        ("ai_text_model", "gemini-3.5-flash"),
         ("wp_url", ""),
         ("wp_username", ""),
         ("wp_password", ""),
@@ -105,6 +214,19 @@ def init_db():
         ("telegram_token", ""),
         ("telegram_chat_id", ""),
         ("telegram_channels", "[]"),
+        ("facebook_page_id", ""),
+        ("facebook_access_token", ""),
+        ("instagram_account_id", ""),
+        ("instagram_access_token", ""),
+        ("tiktok_access_token", ""),
+        ("auto_post_enabled", "false"),
+        ("auto_post_time", "09:00"),
+        ("auto_post_category", "IT, Tech, Trends"),
+        ("auto_post_no_human", "true"),
+        ("auto_post_platforms", '[{"language": "ko", "platform": "wordpress", "target_id": "wordpress"}]'),
+        ("auto_open_published_posts", "true"),
+        ("ai_quality_enabled", "true"),
+        ("ai_quality_min_score", "82"),
     ]
     for key, val in defaults:
         cursor.execute(
@@ -122,6 +244,43 @@ def init_db():
     # job_logs 컬럼 추가 (payload)
     try:
         cursor.execute("ALTER TABLE job_logs ADD COLUMN payload TEXT")
+        conn.commit()
+    except Exception:
+        pass
+
+    # AI 품질 리뷰 테이블 추가
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_quality_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT,
+                language TEXT,
+                original_title TEXT,
+                improved_title TEXT,
+                score INTEGER,
+                issues TEXT,
+                improvements TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE publish_images ADD COLUMN video_url TEXT")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE openclaw_campaigns ADD COLUMN ai_provider TEXT DEFAULT 'gemini'")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE openclaw_campaigns ADD COLUMN ai_model TEXT DEFAULT 'gemini-3.5-flash'")
         conn.commit()
     except Exception:
         pass
@@ -282,7 +441,7 @@ def update_publish_image(image_id: int, **kwargs):
         return
     conn = get_db()
     cursor = conn.cursor()
-    allowed = {'position', 'prompt_ko', 'prompt_en', 'image_url', 'local_path', 'caption'}
+    allowed = {'position', 'prompt_ko', 'prompt_en', 'image_url', 'video_url', 'local_path', 'caption'}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         conn.close()
@@ -320,6 +479,46 @@ def get_job_logs(limit: int = 100) -> List[Dict]:
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM job_logs ORDER BY created_at DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# ============ AI 품질 개선 로그 ============
+
+def add_ai_quality_review(
+    platform: str,
+    language: str,
+    original_title: str,
+    improved_title: str,
+    score: int,
+    issues: Any = None,
+    improvements: Any = None,
+):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO ai_quality_reviews (
+            platform, language, original_title, improved_title, score, issues, improvements
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        platform,
+        language,
+        original_title,
+        improved_title,
+        int(score or 0),
+        json.dumps(issues or [], ensure_ascii=False),
+        json.dumps(improvements or [], ensure_ascii=False),
+    ))
+    conn.commit()
+    conn.close()
+
+
+def get_recent_ai_quality_reviews(limit: int = 20) -> List[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ai_quality_reviews ORDER BY created_at DESC LIMIT ?", (limit,))
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -432,5 +631,461 @@ def get_shorts(project_id: int) -> List[Dict]:
     return []
 
 
+# ============ OpenClaw Campaigns ============
+
+def create_openclaw_campaign(
+    name: str,
+    category: str,
+    platforms_json: Any,
+    default_language: str = "ko",
+    ai_provider: str = "gemini",
+    ai_model: str = "gemini-3.5-flash",
+    schedule_type: str = "daily",
+    schedule_time: str = "09:00",
+    timezone: str = "Asia/Seoul",
+    topic_mode: str = "trend",
+    approval_mode: str = "auto",
+    quality_min_score: int = 82,
+    image_policy_json: Any = None,
+    prompt_profile_json: Any = None,
+    status: str = "active",
+    is_active: int = 1,
+) -> int:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO openclaw_campaigns (
+            name, status, category, default_language, ai_provider, ai_model, platforms_json, schedule_type,
+            schedule_time, timezone, topic_mode, approval_mode, quality_min_score,
+            image_policy_json, prompt_profile_json, is_active, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (
+        name,
+        status,
+        category,
+        default_language,
+        ai_provider,
+        ai_model,
+        json.dumps(platforms_json, ensure_ascii=False) if not isinstance(platforms_json, str) else platforms_json,
+        schedule_type,
+        schedule_time,
+        timezone,
+        topic_mode,
+        approval_mode,
+        int(quality_min_score or 82),
+        json.dumps(image_policy_json or {}, ensure_ascii=False) if not isinstance(image_policy_json, str) else image_policy_json,
+        json.dumps(prompt_profile_json or {}, ensure_ascii=False) if not isinstance(prompt_profile_json, str) else prompt_profile_json,
+        int(is_active),
+    ))
+    new_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return new_id
+
+
+def _deserialize_openclaw_row(row: Optional[sqlite3.Row]) -> Optional[Dict]:
+    if not row:
+        return None
+    item = dict(row)
+    for key in ("platforms_json", "image_policy_json", "prompt_profile_json", "summary_json", "tags_json", "images_json", "quality_report_json", "input_json", "output_json"):
+        if key in item and item[key]:
+            try:
+                item[key] = json.loads(item[key])
+            except Exception:
+                pass
+    return item
+
+
+def get_openclaw_campaign(campaign_id: int) -> Optional[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM openclaw_campaigns WHERE id = ?", (campaign_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return _deserialize_openclaw_row(row)
+
+
+def get_openclaw_campaigns(active_only: bool = False) -> List[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    if active_only:
+        cursor.execute("SELECT * FROM openclaw_campaigns WHERE is_active = 1 ORDER BY updated_at DESC, id DESC")
+    else:
+        cursor.execute("SELECT * FROM openclaw_campaigns ORDER BY updated_at DESC, id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [_deserialize_openclaw_row(r) for r in rows]
+
+
+def update_openclaw_campaign(campaign_id: int, **kwargs):
+    if not kwargs:
+        return
+    conn = get_db()
+    cursor = conn.cursor()
+    allowed = {
+        'name', 'status', 'category', 'default_language', 'ai_provider', 'ai_model', 'platforms_json',
+        'schedule_type', 'schedule_time', 'timezone', 'topic_mode',
+        'approval_mode', 'quality_min_score', 'image_policy_json',
+        'prompt_profile_json', 'is_active'
+    }
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        conn.close()
+        return
+    json_fields = {'platforms_json', 'image_policy_json', 'prompt_profile_json'}
+    normalized = {}
+    for key, value in fields.items():
+        if key in json_fields and not isinstance(value, str):
+            normalized[key] = json.dumps(value, ensure_ascii=False)
+        else:
+            normalized[key] = value
+    set_clause = ", ".join(f"{k} = ?" for k in normalized)
+    values = list(normalized.values()) + [campaign_id]
+    cursor.execute(f"""
+        UPDATE openclaw_campaigns SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, values)
+    conn.commit()
+    conn.close()
+
+
+# ============ OpenClaw Runs ============
+
+def create_openclaw_run(campaign_id: int, topic: str = "", status: str = "queued", current_stage: str = "queued", approval_required: int = 0) -> int:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO openclaw_runs (
+            campaign_id, topic, status, current_stage, approval_required
+        )
+        VALUES (?, ?, ?, ?, ?)
+    """, (campaign_id, topic, status, current_stage, int(approval_required)))
+    run_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return run_id
+
+
+def get_openclaw_run(run_id: int) -> Optional[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM openclaw_runs WHERE id = ?", (run_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return _deserialize_openclaw_row(row)
+
+
+def get_openclaw_runs(limit: int = 50, campaign_id: Optional[int] = None) -> List[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    if campaign_id:
+        cursor.execute(
+            "SELECT * FROM openclaw_runs WHERE campaign_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
+            (campaign_id, limit),
+        )
+    else:
+        cursor.execute("SELECT * FROM openclaw_runs ORDER BY created_at DESC, id DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [_deserialize_openclaw_row(r) for r in rows]
+
+
+def get_latest_openclaw_run_for_campaign(campaign_id: int) -> Optional[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM openclaw_runs WHERE campaign_id = ? ORDER BY created_at DESC, id DESC LIMIT 1",
+        (campaign_id,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return _deserialize_openclaw_row(row)
+
+
+def update_openclaw_run(run_id: int, **kwargs):
+    if not kwargs:
+        return
+    conn = get_db()
+    cursor = conn.cursor()
+    allowed = {'topic', 'status', 'current_stage', 'approval_required', 'started_at', 'completed_at', 'error_message', 'summary_json'}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        conn.close()
+        return
+    if 'summary_json' in fields and not isinstance(fields['summary_json'], str):
+        fields['summary_json'] = json.dumps(fields['summary_json'], ensure_ascii=False)
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [run_id]
+    cursor.execute(f"UPDATE openclaw_runs SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+
+
+# ============ OpenClaw Tasks ============
+
+def create_openclaw_task(
+    run_id: int,
+    task_type: str,
+    target_id: str = "",
+    status: str = "queued",
+    attempt_count: int = 0,
+    max_attempts: int = 3,
+    input_json: Any = None,
+    output_json: Any = None,
+    error_message: str = "",
+    next_retry_at: str = None,
+) -> int:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO openclaw_tasks (
+            run_id, task_type, target_id, status, attempt_count, max_attempts,
+            input_json, output_json, error_message, next_retry_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (
+        run_id,
+        task_type,
+        target_id,
+        status,
+        int(attempt_count),
+        int(max_attempts),
+        json.dumps(input_json, ensure_ascii=False) if input_json is not None and not isinstance(input_json, str) else input_json,
+        json.dumps(output_json, ensure_ascii=False) if output_json is not None and not isinstance(output_json, str) else output_json,
+        error_message,
+        next_retry_at,
+    ))
+    task_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return task_id
+
+
+def get_openclaw_tasks(run_id: int) -> List[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM openclaw_tasks WHERE run_id = ? ORDER BY created_at ASC, id ASC", (run_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [_deserialize_openclaw_row(r) for r in rows]
+
+
+def update_openclaw_task(task_id: int, **kwargs):
+    if not kwargs:
+        return
+    conn = get_db()
+    cursor = conn.cursor()
+    allowed = {'status', 'attempt_count', 'max_attempts', 'input_json', 'output_json', 'error_message', 'next_retry_at'}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        conn.close()
+        return
+    for json_key in ('input_json', 'output_json'):
+        if json_key in fields and fields[json_key] is not None and not isinstance(fields[json_key], str):
+            fields[json_key] = json.dumps(fields[json_key], ensure_ascii=False)
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [task_id]
+    cursor.execute(f"""
+        UPDATE openclaw_tasks SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, values)
+    conn.commit()
+    conn.close()
+
+
+# ============ OpenClaw Approvals ============
+
+def create_approval_queue_item(
+    run_id: int,
+    task_id: Optional[int],
+    target_id: str,
+    title: str,
+    summary: str,
+    content_html: str,
+    status: str = "pending",
+) -> int:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO approval_queue (
+            run_id, task_id, target_id, title, summary, content_html, status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (run_id, task_id, target_id, title, summary, content_html, status))
+    approval_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return approval_id
+
+
+def get_approval_queue_items(status: Optional[str] = None) -> List[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    if status:
+        cursor.execute("SELECT * FROM approval_queue WHERE status = ? ORDER BY created_at DESC, id DESC", (status,))
+    else:
+        cursor.execute("SELECT * FROM approval_queue ORDER BY created_at DESC, id DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_approval_queue_item(approval_id: int) -> Optional[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM approval_queue WHERE id = ?", (approval_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_approval_queue_item(approval_id: int, **kwargs):
+    if not kwargs:
+        return
+    conn = get_db()
+    cursor = conn.cursor()
+    allowed = {'status', 'reviewer', 'review_note', 'approved_at'}
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        conn.close()
+        return
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [approval_id]
+    cursor.execute(f"UPDATE approval_queue SET {set_clause} WHERE id = ?", values)
+    conn.commit()
+    conn.close()
+
+
+# ============ OpenClaw Content Variants ============
+
+def create_content_variant(
+    run_id: int,
+    target_id: str,
+    platform: str,
+    language: str,
+    title: str,
+    summary: str,
+    tags_json: Any,
+    content_html: str,
+    images_json: Any = None,
+    quality_score: Optional[int] = None,
+    quality_report_json: Any = None,
+    publish_status: str = "draft",
+    publish_url: str = "",
+    publish_post_id: str = "",
+) -> int:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO content_variants (
+            run_id, target_id, platform, language, title, summary, tags_json,
+            content_html, images_json, quality_score, quality_report_json,
+            publish_status, publish_url, publish_post_id, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (
+        run_id,
+        target_id,
+        platform,
+        language,
+        title,
+        summary,
+        json.dumps(tags_json or [], ensure_ascii=False) if not isinstance(tags_json, str) else tags_json,
+        content_html,
+        json.dumps(images_json or [], ensure_ascii=False) if not isinstance(images_json, str) else images_json,
+        quality_score,
+        json.dumps(quality_report_json or {}, ensure_ascii=False) if not isinstance(quality_report_json, str) else quality_report_json,
+        publish_status,
+        publish_url,
+        publish_post_id,
+    ))
+    variant_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return variant_id
+
+
+def get_content_variants(run_id: int) -> List[Dict]:
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM content_variants WHERE run_id = ? ORDER BY created_at ASC, id ASC", (run_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [_deserialize_openclaw_row(r) for r in rows]
+
+
+def update_content_variant(variant_id: int, **kwargs):
+    if not kwargs:
+        return
+    conn = get_db()
+    cursor = conn.cursor()
+    allowed = {
+        'title', 'summary', 'tags_json', 'content_html', 'images_json',
+        'quality_score', 'quality_report_json', 'publish_status',
+        'publish_url', 'publish_post_id'
+    }
+    fields = {k: v for k, v in kwargs.items() if k in allowed}
+    if not fields:
+        conn.close()
+        return
+    for json_key in ('tags_json', 'images_json', 'quality_report_json'):
+        if json_key in fields and fields[json_key] is not None and not isinstance(fields[json_key], str):
+            fields[json_key] = json.dumps(fields[json_key], ensure_ascii=False)
+    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    values = list(fields.values()) + [variant_id]
+    cursor.execute(f"""
+        UPDATE content_variants SET {set_clause}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+    """, values)
+    conn.commit()
+    conn.close()
+
+
+def load_settings_to_config():
+    try:
+        import os
+        from config import config
+        
+        # Mapping from DB key to Config attribute and Env var name
+        key_map = {
+            'gemini': ('GEMINI_API_KEY', 'GEMINI_API_KEY'),
+            'openai_api_key': ('OPENAI_API_KEY', 'OPENAI_API_KEY'),
+            'anthropic_api_key': ('ANTHROPIC_API_KEY', 'ANTHROPIC_API_KEY'),
+            'ai_text_provider': ('AI_TEXT_PROVIDER', 'AI_TEXT_PROVIDER'),
+            'ai_text_model': ('AI_TEXT_MODEL', 'AI_TEXT_MODEL'),
+            'blog_client_id': ('BLOG_CLIENT_ID', 'BLOG_CLIENT_ID'),
+            'blog_client_secret': ('BLOG_CLIENT_SECRET', 'BLOG_CLIENT_SECRET'),
+            'blog_id': ('BLOG_ID', 'BLOG_ID'),
+            'wp_url': ('WP_URL', 'WP_URL'),
+            'wp_username': ('WP_USERNAME', 'WP_USERNAME'),
+            'wp_password': ('WP_PASSWORD', 'WP_PASSWORD'),
+            'telegram_token': ('TELEGRAM_TOKEN', 'TELEGRAM_TOKEN'),
+            'telegram_chat_id': ('TELEGRAM_CHAT_ID', 'TELEGRAM_CHAT_ID'),
+            'telegram_channels': ('TELEGRAM_CHANNELS', 'TELEGRAM_CHANNELS'),
+            'facebook_page_id': ('FACEBOOK_PAGE_ID', 'FACEBOOK_PAGE_ID'),
+            'facebook_access_token': ('FACEBOOK_ACCESS_TOKEN', 'FACEBOOK_ACCESS_TOKEN'),
+            'instagram_account_id': ('INSTAGRAM_ACCOUNT_ID', 'INSTAGRAM_ACCOUNT_ID'),
+            'instagram_access_token': ('INSTAGRAM_ACCESS_TOKEN', 'INSTAGRAM_ACCESS_TOKEN'),
+            'tiktok_access_token': ('TIKTOK_ACCESS_TOKEN', 'TIKTOK_ACCESS_TOKEN'),
+        }
+        
+        for db_key, (config_attr, env_name) in key_map.items():
+            val = get_global_setting(db_key, "")
+            if val:
+                if isinstance(val, (list, dict)):
+                    import json
+                    str_val = json.dumps(val, ensure_ascii=False)
+                else:
+                    str_val = str(val)
+                setattr(config, config_attr, str_val)
+                os.environ[env_name] = str_val
+                
+        print("[Database] Loaded global settings to config successfully")
+    except Exception as e:
+        print(f"[Database] Failed to load settings to config: {e}")
+
+
 # 앱 시작 시 초기화
 init_db()
+load_settings_to_config()

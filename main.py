@@ -57,9 +57,23 @@ templates.env.globals['blog_only'] = True
 # ==========================================
 from app.routers import blog as blog_router
 from app.routers import publish as publish_router
+from app.routers import amazon as amazon_router
+from app.routers import openclaw as openclaw_router
 
 app.include_router(blog_router.router)
 app.include_router(publish_router.router)
+app.include_router(amazon_router.router)
+app.include_router(openclaw_router.router)
+
+from services.scheduler_service import scheduler_service
+
+@app.on_event("startup")
+async def startup_event():
+    await scheduler_service.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await scheduler_service.stop()
 
 
 def get_project_output_dir(project_id: int = None):
@@ -97,6 +111,7 @@ async def page_settings(request: Request):
     return templates.TemplateResponse("pages/settings.html", {
         "request": request,
         "page": "settings",
+        "blogger_accounts": db.get_blogger_accounts(),
     })
 
 
@@ -116,12 +131,32 @@ async def page_publish_hub(request: Request):
     })
 
 
+@app.get("/openclaw-dashboard", response_class=HTMLResponse)
+async def page_openclaw_dashboard(request: Request):
+    return templates.TemplateResponse("pages/openclaw_dashboard.html", {
+        "request": request,
+        "page": "openclaw-dashboard",
+    })
+
+
+@app.get("/amazon-review", response_class=HTMLResponse)
+async def page_amazon_review(request: Request):
+    return templates.TemplateResponse("pages/amazon_review.html", {
+        "request": request,
+        "page": "amazon-review",
+    })
+
+
 # ==========================================
 # 설정 API
 # ==========================================
 
 class GlobalSettingsRequest(BaseModel):
     gemini_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    ai_text_provider: Optional[str] = None
+    ai_text_model: Optional[str] = None
     blog_client_id: Optional[str] = None
     blog_client_secret: Optional[str] = None
     blog_id: Optional[str] = None
@@ -131,6 +166,19 @@ class GlobalSettingsRequest(BaseModel):
     telegram_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     telegram_channels: Optional[Any] = None # List or JSON
+    facebook_page_id: Optional[str] = None
+    facebook_access_token: Optional[str] = None
+    instagram_account_id: Optional[str] = None
+    instagram_access_token: Optional[str] = None
+    tiktok_access_token: Optional[str] = None
+    auto_post_enabled: Optional[str] = None
+    auto_post_time: Optional[str] = None
+    auto_post_category: Optional[str] = None
+    auto_post_no_human: Optional[str] = None
+    auto_post_platforms: Optional[str] = None
+    auto_open_published_posts: Optional[str] = None
+    ai_quality_enabled: Optional[str] = None
+    ai_quality_min_score: Optional[str] = None
 
 
 @app.get("/api/settings/keys")
@@ -142,6 +190,10 @@ async def get_api_keys():
 async def save_api_keys(req: GlobalSettingsRequest):
     key_map = {
         'gemini_api_key': 'GEMINI_API_KEY',
+        'openai_api_key': 'OPENAI_API_KEY',
+        'anthropic_api_key': 'ANTHROPIC_API_KEY',
+        'ai_text_provider': 'AI_TEXT_PROVIDER',
+        'ai_text_model': 'AI_TEXT_MODEL',
         'blog_client_id': 'BLOG_CLIENT_ID',
         'blog_client_secret': 'BLOG_CLIENT_SECRET',
         'blog_id': 'BLOG_ID',
@@ -151,9 +203,18 @@ async def save_api_keys(req: GlobalSettingsRequest):
         'telegram_token': 'TELEGRAM_TOKEN',
         'telegram_chat_id': 'TELEGRAM_CHAT_ID',
         'telegram_channels': 'TELEGRAM_CHANNELS',
+        'facebook_page_id': 'FACEBOOK_PAGE_ID',
+        'facebook_access_token': 'FACEBOOK_ACCESS_TOKEN',
+        'instagram_account_id': 'INSTAGRAM_ACCOUNT_ID',
+        'instagram_access_token': 'INSTAGRAM_ACCESS_TOKEN',
+        'tiktok_access_token': 'TIKTOK_ACCESS_TOKEN',
     }
     db_key_map = {
         'gemini_api_key': 'gemini',
+        'openai_api_key': 'openai_api_key',
+        'anthropic_api_key': 'anthropic_api_key',
+        'ai_text_provider': 'ai_text_provider',
+        'ai_text_model': 'ai_text_model',
         'blog_client_id': 'blog_client_id',
         'blog_client_secret': 'blog_client_secret',
         'blog_id': 'blog_id',
@@ -163,10 +224,36 @@ async def save_api_keys(req: GlobalSettingsRequest):
         'telegram_token': 'telegram_token',
         'telegram_chat_id': 'telegram_chat_id',
         'telegram_channels': 'telegram_channels',
+        'facebook_page_id': 'facebook_page_id',
+        'facebook_access_token': 'facebook_access_token',
+        'instagram_account_id': 'instagram_account_id',
+        'instagram_access_token': 'instagram_access_token',
+        'tiktok_access_token': 'tiktok_access_token',
+        'auto_post_enabled': 'auto_post_enabled',
+        'auto_post_time': 'auto_post_time',
+        'auto_post_category': 'auto_post_category',
+        'auto_post_no_human': 'auto_post_no_human',
+        'auto_post_platforms': 'auto_post_platforms',
+        'auto_open_published_posts': 'auto_open_published_posts',
+        'ai_quality_enabled': 'ai_quality_enabled',
+        'ai_quality_min_score': 'ai_quality_min_score',
+    }
+    secret_fields = {
+        'gemini_api_key',
+        'openai_api_key',
+        'anthropic_api_key',
+        'blog_client_secret',
+        'wp_password',
+        'telegram_token',
+        'facebook_access_token',
+        'instagram_access_token',
+        'tiktok_access_token',
     }
     for field, env_key in key_map.items():
         value = getattr(req, field, None)
         if value is not None:
+            if field in secret_fields and str(value).strip() == "":
+                continue
             # 리스트나 딕셔너리인 경우 JSON 문자열로 변환하여 저장
             if isinstance(value, (list, dict)):
                 import json
@@ -176,6 +263,12 @@ async def save_api_keys(req: GlobalSettingsRequest):
             
             config.update_api_key(env_key, save_value)
             db.save_global_setting(db_key_map[field], value)
+    for field, db_key in db_key_map.items():
+        if field in key_map:
+            continue
+        value = getattr(req, field, None)
+        if value is not None:
+            db.save_global_setting(db_key, value)
     return {"status": "ok"}
 
 
@@ -205,6 +298,17 @@ async def health_check():
     return {
         "status": "ok",
         "apis": health_results
+    }
+
+
+@app.get("/api/settings/social-health")
+async def social_health_check():
+    from services.social_publish_service import social_publish_service
+    return {
+        "status": "ok",
+        "facebook": await social_publish_service.verify_facebook_connection(),
+        "instagram": await social_publish_service.verify_instagram_connection(),
+        "tiktok": await social_publish_service.verify_tiktok_connection(),
     }
 
 

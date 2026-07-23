@@ -459,12 +459,12 @@ const API = {
     // API 키 관리
     apiKeys: {
         async get() {
-            const response = await fetch('/api/settings/api-keys');
+            const response = await fetch('/api/settings/keys');
             return response.json();
         },
 
         async save(keys) {
-            const response = await fetch('/api/settings/api-keys', {
+            const response = await fetch('/api/settings/keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(keys)

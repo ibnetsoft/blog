@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto space-y-6">
+    <section class="relative overflow-hidden rounded-[28px] border border-cyan-200/30 dark:border-cyan-700/30 bg-gradient-to-br from-cyan-500 via-sky-500 to-emerald-500 p-8 text-white shadow-2xl shadow-cyan-900/20">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.25),transparent_35%),radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.22),transparent_28%)]"></div>
+        <div class="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div class="max-w-2xl">
+                <div class="mb-3 inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-[11px] font-black uppercase tracking-[0.25em]">
+                    OpenClaw Campaign Operations
+                </div>
+                <h1 class="text-3xl font-black tracking-tight sm:text-4xl">캠페인 기반 블로그 자동 발행 운영실</h1>
+                <p class="mt-3 text-sm text-cyan-50/90 sm:text-base">
+                    주제 생성, 품질 검토, 승인 대기, 플랫폼 발행까지 OpenClaw 실행 흐름을 한 화면에서 관리합니다.
+                </p>
+            </div>
+            <div class="grid grid-cols-2 gap-3 text-sm sm:min-w-[320px]">
+                <div class="rounded-2xl bg-slate-950/20 p-4 backdrop-blur">
+                    <div class="text-cyan-100/75">활성 캠페인</div>
+                    <div id="summaryActiveCampaigns" class="mt-1 text-2xl font-black">0</div>
+                </div>
+                <div class="rounded-2xl bg-slate-950/20 p-4 backdrop-blur">
+                    <div class="text-cyan-100/75">승인 대기</div>
+                    <div id="summaryPendingApprovals" class="mt-1 text-2xl font-black">0</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div class="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+            <div class="mb-5 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-black text-gray-900 dark:text-white">새 캠페인 만들기</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">먼저 타겟 플랫폼과 승인 정책을 정하면 바로 수동 실행까지 이어갈 수 있습니다.</p>
+                </div>
+                <button id="btnCreateCampaign" class="rounded-2xl bg-cyan-500 px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-cyan-500/30 transition hover:bg-cyan-600">
+                    캠페인 저장
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">캠페인 이름</span>
+                    <input id="campaignName" type="text" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white" placeholder="예: 한국어 IT 자동 발행">
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">카테고리</span>
+                    <input id="campaignCategory" type="text" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white" value="IT">
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">기본 언어</span>
+                    <select id="campaignLanguage" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                        <option value="ko">ko</option>
+                        <option value="en">en</option>
+                        <option value="ja">ja</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">OpenClaw AI Provider</span>
+                    <select id="campaignAiProvider" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                        <option value="gemini">Gemini</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Claude</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">OpenClaw AI Model</span>
+                    <select id="campaignAiModel" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white"></select>
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">승인 모드</span>
+                    <select id="campaignApprovalMode" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white">
+                        <option value="auto">auto</option>
+                        <option value="human">human-in-loop</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">스케줄 시간</span>
+                    <input id="campaignScheduleTime" type="time" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white" value="09:00">
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-black uppercase tracking-wider text-gray-500 dark:text-gray-400">최소 품질 점수</span>
+                    <input id="campaignQualityMinScore" type="number" min="0" max="100" class="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white dark:border-gray-600 dark:bg-gray-900 dark:text-white" value="82">
+                </label>
+            </div>
+
+            <div class="mt-5 rounded-3xl border border-dashed border-cyan-200 bg-cyan-50/40 p-5 dark:border-cyan-800 dark:bg-cyan-900/10">
+                <div class="mb-3 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-black text-gray-900 dark:text-white">타겟 플랫폼</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">캠페인 저장 시 입력된 항목 전체가 발행 대상이 됩니다.</p>
+                    </div>
+                    <button id="btnAddTarget" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900">
+                        타겟 추가
+                    </button>
+                </div>
+                <div id="platformTargets" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <div class="mb-4 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-black text-gray-900 dark:text-white">운영 요약</h2>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">최근 실행 상태와 승인 대기 수를 빠르게 확인합니다.</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="btnAutoRefresh" class="rounded-2xl border border-gray-200 px-4 py-2 text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
+                            Auto refresh: ON
+                        </button>
+                        <button id="btnRetryFailedRuns" class="rounded-2xl bg-violet-500 px-4 py-2 text-xs font-black text-white transition hover:bg-violet-600">
+                            Retry failed runs
+                        </button>
+                        <button id="btnRefreshSummary" class="rounded-2xl border border-gray-200 px-4 py-2 text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
+                            새로고침
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900">
+                        <div class="text-xs font-bold uppercase tracking-wide text-gray-400">전체 캠페인</div>
+                        <div id="summaryCampaignCount" class="mt-1 text-2xl font-black text-gray-900 dark:text-white">0</div>
+                    </div>
+                    <div class="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900">
+                        <div class="text-xs font-bold uppercase tracking-wide text-gray-400">최근 완료</div>
+                        <div id="summaryCompletedCount" class="mt-1 text-2xl font-black text-gray-900 dark:text-white">0</div>
+                    </div>
+                    <div class="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900">
+                        <div class="text-xs font-bold uppercase tracking-wide text-gray-400">부분 성공</div>
+                        <div id="summaryPartialCount" class="mt-1 text-2xl font-black text-amber-500">0</div>
+                    </div>
+                    <div class="rounded-2xl bg-gray-50 p-4 dark:bg-gray-900">
+                        <div class="text-xs font-bold uppercase tracking-wide text-gray-400">실패</div>
+                        <div id="summaryFailedCount" class="mt-1 text-2xl font-black text-rose-500">0</div>
+                    </div>
+                </div>
+                <div class="mt-4 rounded-2xl bg-slate-950/5 p-3 text-sm text-gray-600 dark:bg-white/5 dark:text-gray-300">
+                    <div>운영 필요 항목: <span id="summaryActionableCount" class="font-black text-violet-500">0</span></div>
+                    <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">Latest run: <span id="summaryLatestRun">No runs yet</span></div>
+                </div>
+            </div>
+
+            <div class="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+                <h2 class="text-xl font-black text-gray-900 dark:text-white">승인 대기</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">수동 승인 모드이거나 품질 컷오프 미달일 때 여기에 쌓입니다.</p>
+                <div id="approvalList" class="mt-4 space-y-3">
+                    <div class="rounded-2xl bg-gray-50 p-4 text-sm text-gray-500 dark:bg-gray-900 dark:text-gray-400">불러오는 중...</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid grid-cols-1 gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div class="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-black text-gray-900 dark:text-white">캠페인 목록</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">활성/비활성 상태를 전환하고 수동 실행을 시작할 수 있습니다.</p>
+                </div>
+                <button id="btnRefreshCampaigns" class="rounded-2xl border border-gray-200 px-4 py-2 text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
+                    목록 새로고침
+                </button>
+            </div>
+            <div id="campaignList" class="space-y-3"></div>
+        </div>
+
+        <div class="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-800">
+            <div class="mb-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-black text-gray-900 dark:text-white">최근 실행 이력</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">캠페인별 최신 상태와 다음 액션을 확인합니다.</p>
+                </div>
+                <button id="btnRefreshRuns" class="rounded-2xl border border-gray-200 px-4 py-2 text-xs font-black text-gray-700 transition hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
+                    실행 새로고침
+                </button>
+            </div>
+            <div id="runList" class="space-y-3"></div>
+        </div>
+    </section>
+
+    <div id="openclawPreviewModal" class="hidden fixed inset-0 z-50 bg-slate-950/70 p-4">
+        <div class="mx-auto mt-6 max-w-5xl rounded-3xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                <div>
+                    <h3 id="previewTitle" class="text-lg font-black text-gray-900 dark:text-white">상세 보기</h3>
+                    <p id="previewMeta" class="mt-1 text-xs text-gray-500 dark:text-gray-400"></p>
+                </div>
+                <button id="btnClosePreview" class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-black text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">닫기</button>
+            </div>
+            <div id="previewBody" class="max-h-[75vh] overflow-y-auto px-6 py-5 text-sm leading-7 text-gray-700 dark:text-gray-200"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/openclaw.js?v={{ range(1, 100000) | random }}"></script>
+{% endblock %}

@@ -2,15 +2,19 @@
 import os
 import shutil
 import time
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Request
 from pydantic import BaseModel
 from typing import List, Optional
 from services.publish_service import publish_service
 from services.blog_service import blog_service
+from services.publish_utils import normalize_publish_result, open_published_urls, validate_blog_post_payload, validate_publish_html
 from config import config
 import database as db
-
 router = APIRouter(prefix="/api/publish", tags=["Publish"])
+
+def _build_public_output_url(request: Request, relative_path: str) -> str:
+    cleaned = relative_path.lstrip('/')
+    return str(request.url_for('output', path=cleaned))
 
 
 class CreateSessionRequest(BaseModel):
@@ -261,20 +265,40 @@ async def post_blog(req: PostBlogRequest):
             db.update_publish_session(req.session_id, content_html=html_content)
 
         title = session.get("title", "무제")
+        payload_validation = validate_blog_post_payload(title, session.get("content", ""), req.platforms)
+        html_validation = validate_publish_html(html_content)
+        images = db.get_publish_images(req.session_id)
+        validation_errors = payload_validation["errors"] + html_validation["errors"]
+        validation_warnings = payload_validation["warnings"] + html_validation["warnings"]
+        if validation_errors:
+            return {
+                "status": "error",
+                "error": "invalid publish payload",
+                "errors": validation_errors,
+                "warnings": validation_warnings,
+            }
+
         results = await publish_service.post_to_blogs(
             session_id=req.session_id,
             title=title,
             html_content=html_content,
             tags=req.tags,
-            platforms=req.platforms
+            platforms=req.platforms,
+            media_items=images,
         )
 
-        all_ok = all(r.get("status") == "ok" for r in results.values())
-        any_ok = any(r.get("status") == "ok" for r in results.values())
+        quality_reviews = results.pop("_quality_reviews", {}) if isinstance(results, dict) else {}
+        normalized_results = results
+        all_ok = all(r.get("status") == "ok" for r in normalized_results.values())
+        any_ok = any(r.get("status") == "ok" for r in normalized_results.values())
+        opened_urls = open_published_urls(normalized_results, context="publish-hub")
 
         return {
             "status": "ok" if all_ok else ("partial" if any_ok else "error"),
-            "results": results
+            "results": normalized_results,
+            "warnings": validation_warnings,
+            "opened_urls": opened_urls,
+            "quality_reviews": quality_reviews,
         }
     except Exception as e:
         return {"status": "error", "error": str(e)}
@@ -285,7 +309,7 @@ async def post_blog(req: PostBlogRequest):
 # ==========================================
 
 @router.post("/upload-image/{session_id}/{image_id}")
-async def upload_image_file(session_id: int, image_id: int, file: UploadFile = File(...)):
+async def upload_image_file(session_id: int, image_id: int, request: Request, file: UploadFile = File(...)):
     """이미지 파일 업로드 → 로컬 저장 + DB 업데이트"""
     try:
         # 저장 디렉토리
@@ -301,12 +325,34 @@ async def upload_image_file(session_id: int, image_id: int, file: UploadFile = F
             shutil.copyfileobj(file.file, f)
 
         # 웹 경로
-        web_url = f"/output/publish_images/{session_id}/{filename}"
+        web_url = _build_public_output_url(request, f"/output/publish_images/{session_id}/{filename}")
 
         # DB 업데이트
-        db.update_publish_image(image_id, image_url=web_url, status="done")
+        db.update_publish_image(image_id, image_url=web_url)
 
         return {"status": "ok", "image_url": web_url, "file_path": file_path}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/upload-video/{session_id}/{image_id}")
+async def upload_video_file(session_id: int, image_id: int, request: Request, file: UploadFile = File(...)):
+    """비디오 파일 업로드 → 로컬 저장 + DB 업데이트"""
+    try:
+        upload_dir = os.path.join(config.OUTPUT_DIR, "publish_videos", str(session_id))
+        os.makedirs(upload_dir, exist_ok=True)
+
+        ext = os.path.splitext(file.filename)[1] or ".mp4"
+        filename = f"video_{image_id}_{int(time.time())}{ext}"
+        file_path = os.path.join(upload_dir, filename)
+
+        with open(file_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+
+        web_url = _build_public_output_url(request, f"/output/publish_videos/{session_id}/{filename}")
+        db.update_publish_image(image_id, video_url=web_url)
+
+        return {"status": "ok", "video_url": web_url, "file_path": file_path}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
@@ -324,22 +370,24 @@ async def upload_images_to_wordpress(session_id: int):
                 results.append({"id": img["id"], "status": "skip", "reason": "로컬 이미지 아님"})
                 continue
 
-            # 로컬 경로 변환
             local_path = os.path.join(config.OUTPUT_DIR, img_url.replace("/output/", ""))
             if not os.path.exists(local_path):
-                results.append({"id": img["id"], "status": "error", "reason": "파일 없음"})
+                normalized = normalize_publish_result(
+                    "wordpress_media",
+                    {"status": "error", "error": "local image file not found"}
+                )
+                results.append({"id": img["id"], "reason": normalized["error"], **normalized})
                 continue
 
-            # WordPress 업로드
             wp_result = await blog_service.upload_image_to_wordpress(local_path)
             if wp_result.get("status") == "ok":
                 wp_url = wp_result.get("url", "")
                 db.update_publish_image(img["id"], image_url=wp_url)
                 results.append({"id": img["id"], "status": "ok", "wp_url": wp_url})
             else:
-                results.append({"id": img["id"], "status": "error", "reason": wp_result.get("error", "")})
+                normalized = normalize_publish_result("wordpress_media", wp_result)
+                results.append({"id": img["id"], "reason": normalized.get("error", ""), **normalized})
 
-        # 모든 업로드 처리 후, 세션의 HTML 본문도 새 공개 URL로 업데이트 (미리보기 동기화)
         session = db.get_publish_session(session_id)
         if session:
             updated_images = db.get_publish_images(session_id)
@@ -348,5 +396,28 @@ async def upload_images_to_wordpress(session_id: int):
             print(f"[Publish] Session {session_id} HTML rebuilt with public URLs")
 
         return {"status": "ok", "results": results}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@router.post("/promote-media/{session_id}")
+async def promote_media_to_public(session_id: int):
+    """세션 HTML의 로컬 미디어를 공개 URL 기준으로 정리"""
+    try:
+        session = db.get_publish_session(session_id)
+        if not session:
+            return {"status": "error", "error": "세션을 찾을 수 없습니다."}
+
+        source_html = session.get("content_html") or publish_service.build_blog_html(session.get("content", ""), db.get_publish_images(session_id))
+        promotion = await blog_service.promote_local_media_to_public(source_html)
+        db.update_publish_session(session_id, content_html=promotion.get("content", source_html))
+
+        return {
+            "status": "ok",
+            "content_html": promotion.get("content", source_html),
+            "promoted_images": promotion.get("promoted_images", []),
+            "pending_videos": promotion.get("pending_videos", []),
+            "failed_images": promotion.get("failed_images", []),
+        }
     except Exception as e:
         return {"status": "error", "error": str(e)}

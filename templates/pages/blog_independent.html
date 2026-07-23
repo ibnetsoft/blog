@@ -42,8 +42,9 @@
 
                     <div>
                         <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2 px-1">카테고리 (디자인 스타일)</label>
-                        <select id="categorySelect" 
+                        <select id="categorySelect" onchange="saveStateInputs()"
                             class="input-field w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-2xl p-3 text-sm font-bold text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-purple-500 shadow-sm appearance-none">
+                            <option value="IT/Tech" class="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" selected>IT/테크 (IT/Tech)</option>
                             <option value="General" class="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100">기본 (General Style)</option>
                             <option value="Automobile" class="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100">자동차 (Automobile)</option>
                             <option value="Beauty" class="bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100">뷰티 (Beauty)</option>
@@ -60,7 +61,24 @@
 
                     <div>
                         <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2 px-1">블로그 주제 (또는 핵심 키워드)</label>
-                        <textarea id="topicInput"
+
+                        <!-- AI 추천 일반 트렌드 영역 -->
+                        <div id="generalTrendSection" class="mb-4 p-4 bg-purple-50/50 dark:bg-purple-900/10 rounded-2xl border border-purple-100 dark:border-purple-900/20">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="flex h-2 w-2 rounded-full bg-purple-500 animate-pulse"></span>
+                                    <span class="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest">AI 추천 주제 후보</span>
+                                </div>
+                                <button onclick="loadGeneralTrends()" id="btnLoadTrends" class="text-[10px] font-bold text-purple-600 bg-white dark:bg-gray-800 shadow-sm px-3 py-1.5 rounded-lg hover:scale-105 transition-all flex items-center gap-1 border border-purple-100 dark:border-purple-800">
+                                    <span>🔄</span> 추천 새로고침
+                                </button>
+                            </div>
+                            <div id="generalTrendContainer" class="flex flex-wrap gap-2">
+                                <span class="text-[10px] text-gray-400 italic font-medium">필요할 때만 추천 새로고침을 누르세요. 추천을 클릭하면 주제 입력칸에 적용됩니다.</span>
+                            </div>
+                        </div>
+
+                        <textarea id="topicInput" oninput="saveStateInputs()"
                             class="input-field w-full bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 rounded-2xl p-4 text-sm font-medium text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-purple-500 shadow-sm"
                             rows="6" placeholder="AI가 어떤 글을 써주길 원하시나요? 주제를 상세히 적을수록 더 정확한 결과가 나옵니다.&#10;예: 2026년 일본 여행 필수 오미야게 추천 TOP 10"></textarea>
                     </div>
@@ -71,6 +89,7 @@
                         <span class="text-2xl group-hover:animate-bounce">💎</span>
                         <span class="font-black text-xl tracking-tight">AI 다국어 동시 작성 시작</span>
                     </button>
+                    <p class="mt-3 text-[11px] text-gray-400">선택한 주제 1개를 기반으로 블로그용 장문과 소셜용 짧은 포스트를 동시에 생성합니다.</p>
                 </div>
             </div>
 
@@ -235,6 +254,8 @@
             const banner = document.getElementById('healthAlertBanner');
             const text = document.getElementById('healthAlertText');
 
+            if (!banner || !text) return;
+
             if (issues.length > 0) {
                 console.log('연동 이슈 감지:', issues);
                 // banner.classList.remove('hidden'); (제거 요청에 따라 숨김 유지)
@@ -283,10 +304,10 @@
 
             allAccounts.forEach(acc => {
                 const isConnected = acc.connected;
-                const statusClass = isConnected 
-                    ? 'bg-orange-50/20 dark:bg-orange-900/10 border-orange-500/10' 
+                const statusClass = isConnected
+                    ? 'bg-orange-50/20 dark:bg-orange-900/10 border-orange-500/10'
                     : 'bg-red-50/10 dark:bg-red-900/5 border-red-500/20 opacity-80';
-                
+
                 platformsList.innerHTML += `
                     <li class="flex items-center justify-between gap-2 p-1.5 ${statusClass} rounded-xl border transition-all hover:bg-orange-50/40 dark:hover:bg-orange-900/20">
                         <div class="flex items-center gap-2 overflow-hidden flex-1">
@@ -301,11 +322,43 @@
                 `;
             });
 
+            platformsList.innerHTML += `
+                <li class="flex items-center gap-2 p-1.5 bg-sky-50/20 dark:bg-sky-900/10 rounded-xl border border-sky-500/10 transition-all hover:bg-sky-50/40 dark:hover:bg-sky-900/20">
+                    <input type="checkbox" id="check_telegram" class="w-3.5 h-3.5 rounded border-gray-300 text-sky-600 focus:ring-0 cursor-pointer">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <span class="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-sky-500 text-white rounded-lg text-[9px] font-black">T</span>
+                        <span class="text-[10px] font-black text-gray-700 dark:text-gray-200 truncate uppercase mt-0.5">TELEGRAM</span>
+                    </div>
+                </li>
+                <li class="flex items-center gap-2 p-1.5 bg-blue-50/20 dark:bg-blue-900/10 rounded-xl border border-blue-500/10 transition-all hover:bg-blue-50/40 dark:hover:bg-blue-900/20">
+                    <input type="checkbox" id="check_facebook" class="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-0 cursor-pointer">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <span class="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-blue-600 text-white rounded-lg text-[9px] font-black">F</span>
+                        <span class="text-[10px] font-black text-gray-700 dark:text-gray-200 truncate uppercase mt-0.5">FACEBOOK</span>
+                    </div>
+                </li>
+                <li class="flex items-center gap-2 p-1.5 bg-pink-50/20 dark:bg-pink-900/10 rounded-xl border border-pink-500/10 transition-all hover:bg-pink-50/40 dark:hover:bg-pink-900/20">
+                    <input type="checkbox" id="check_instagram" class="w-3.5 h-3.5 rounded border-gray-300 text-pink-600 focus:ring-0 cursor-pointer">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <span class="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-pink-500 text-white rounded-lg text-[9px] font-black">I</span>
+                        <span class="text-[10px] font-black text-gray-700 dark:text-gray-200 truncate uppercase mt-0.5">INSTAGRAM</span>
+                    </div>
+                </li>
+                <li class="flex items-center gap-2 p-1.5 bg-gray-50/60 dark:bg-gray-700/30 rounded-xl border border-gray-300/40 dark:border-gray-600/40 transition-all hover:bg-gray-100/60 dark:hover:bg-gray-700/50">
+                    <input type="checkbox" id="check_tiktok" class="w-3.5 h-3.5 rounded border-gray-300 text-gray-700 focus:ring-0 cursor-pointer">
+                    <div class="flex items-center gap-2 overflow-hidden">
+                        <span class="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-gray-900 text-white rounded-lg text-[9px] font-black">TT</span>
+                        <span class="text-[10px] font-black text-gray-700 dark:text-gray-200 truncate uppercase mt-0.5">TIKTOK</span>
+                    </div>
+                </li>
+            `;
+
             if (!wpUrl && connectedAccounts.length === 0) {
-                platformsList.innerHTML = '<li class="text-[9px] text-center text-gray-400 italic py-2">연동된 블로그 없음</li>';
+                platformsList.innerHTML += '<li class="text-[9px] text-center text-gray-400 italic py-2">블로그 연동이 없어도 소셜 전용 생성/게시가 가능합니다.</li>';
             }
 
             renderTabs();
+            loadState();
         } catch (e) {
             console.error('Init Error:', e);
             Utils.showToast('연동 정보를 가져오는데 실패했습니다.', 'error');
@@ -458,11 +511,30 @@
         connectedAccounts.forEach(acc => {
             const bCheck = document.getElementById(`check_blogger_${acc.id}`);
             if (bCheck && bCheck.checked) {
-                platforms.push({ 
-                    language: acc.lang || 'ja', 
-                    platform: 'blogger', 
+                platforms.push({
+                    language: acc.lang || 'ja',
+                    platform: 'blogger',
                     target_id: `blogger:${acc.id}`,
                     category: category
+                });
+            }
+        });
+
+        const socialDefaults = {
+            telegram: 'ko',
+            facebook: 'ko',
+            instagram: 'ko',
+            tiktok: 'ko'
+        };
+        ['telegram', 'facebook', 'instagram', 'tiktok'].forEach(platformName => {
+            const checkbox = document.getElementById(`check_${platformName}`);
+            if (checkbox && checkbox.checked) {
+                platforms.push({
+                    language: socialDefaults[platformName],
+                    platform: platformName,
+                    target_id: platformName,
+                    category: category,
+                    style: platformName === 'telegram' ? 'info' : 'social'
                 });
             }
         });
@@ -490,6 +562,7 @@
             if (data.status === 'ok') {
                 // 결과 저장
                 independentResults = {};
+                const generationErrors = [];
                 data.results.forEach(item => {
                     if (item.status === 'ok') {
                         independentResults[item.target_id] = {
@@ -499,24 +572,30 @@
                             summary: item.summary || ''
                         };
                     } else {
-                        // 생성 실패 시 에러 메시지 표시
-                        independentResults[item.target_id] = {
-                            title: '❌ 생성 실패',
-                            content: `<div class="p-6 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400">
-                                <h3 class="font-black mb-2 flex items-center gap-2">⚠️ 콘텐츠 생성 오류</h3>
-                                <p class="text-sm opacity-80">${item.error || '알 수 없는 오류가 발생했습니다.'}</p>
-                            </div>`,
-                            tags: '',
-                            summary: '생성 실패'
-                        };
+                        generationErrors.push(item.error || '알 수 없는 오류가 발생했습니다.');
                     }
                 });
+
+                const resultIds = Object.keys(independentResults);
+                if (resultIds.length === 0) {
+                    currentTab = 'wordpress';
+                    document.getElementById('postTitle').value = '';
+                    document.getElementById('postContent').value = '';
+                    document.getElementById('postTags').value = '';
+                    document.getElementById('postSummary').value = '';
+                    saveStateInputs();
+                    throw new Error(generationErrors[0] || '생성 실패');
+                }
                 
-                // 첫 번째 탭 표시
-                currentTab = 'wordpress';
+                currentTab = independentResults.wordpress ? 'wordpress' : resultIds[0];
                 loadTabData(currentTab);
                 renderTabs();
-                Utils.showToast('모든 언어의 고품질 콘텐츠가 독립적으로 생성되었습니다!', 'success');
+                saveStateInputs(); // 글 생성 완료 후 상태 저장
+                if (generationErrors.length > 0) {
+                    Utils.showToast(`일부 콘텐츠 생성 실패: ${generationErrors[0]}`, 'warning');
+                } else {
+                    Utils.showToast('모든 언어의 고품질 콘텐츠가 독립적으로 생성되었습니다!', 'success');
+                }
             } else {
                 throw new Error(data.error || '생성 실패');
             }
@@ -529,19 +608,29 @@
 
     function renderTabs() {
         const container = document.getElementById('tabContainer');
-        let html = `
-            <button onclick="switchTab('wordpress')" 
-                class="px-4 py-2 text-xs font-black rounded-t-xl transition-all ${currentTab === 'wordpress' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}">
-                한국어 (WP)
-            </button>
-        `;
+        let html = '';
+        const tabMeta = {
+            wordpress: '한국어 (WP)',
+            telegram: 'Telegram',
+            facebook: 'Facebook',
+            instagram: 'Instagram',
+            tiktok: 'TikTok'
+        };
 
-        connectedAccounts.forEach(acc => {
-            const tid = `blogger:${acc.id}`;
+        Object.keys(independentResults).forEach(tid => {
+            let label = tabMeta[tid];
+            if (!label && tid.startsWith('blogger:')) {
+                const accId = tid.split(':')[1];
+                const acc = connectedAccounts.find(a => String(a.id) === String(accId));
+                label = `${(acc?.lang || 'blog').toUpperCase()} (Blog)`;
+            }
+            if (!label) {
+                label = tid;
+            }
             html += `
-                <button onclick="switchTab('${tid}')" 
+                <button onclick="switchTab('${tid}')"
                     class="px-4 py-2 text-xs font-black rounded-t-xl transition-all ${currentTab === tid ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-50'}">
-                    ${acc.lang.toUpperCase()} (Blog)
+                    ${label}
                 </button>
             `;
         });
@@ -572,6 +661,88 @@
         independentResults[currentTab].content = document.getElementById('postContent').value;
         independentResults[currentTab].tags = document.getElementById('postTags').value;
         independentResults[currentTab].summary = document.getElementById('postSummary').value;
+        saveStateInputs();
+    }
+
+    function isGenerationErrorResult(data) {
+        if (!data) return false;
+        const title = data.title || '';
+        const summary = data.summary || '';
+        const content = data.content || '';
+        return title.includes('생성 실패') ||
+            summary.includes('생성 실패') ||
+            content.includes('콘텐츠 생성 오류') ||
+            content.includes('Anthropic API 오류') ||
+            content.includes('invalid x-api-key');
+    }
+
+    function clearEditorIfGenerationError() {
+        const titleInput = document.getElementById('postTitle');
+        const contentInput = document.getElementById('postContent');
+        const tagsInput = document.getElementById('postTags');
+        const summaryInput = document.getElementById('postSummary');
+        const currentData = independentResults[currentTab];
+
+        if (!isGenerationErrorResult(currentData) && !isGenerationErrorResult({
+            title: titleInput.value,
+            content: contentInput.value,
+            tags: tagsInput.value,
+            summary: summaryInput.value
+        })) return;
+
+        delete independentResults[currentTab];
+        titleInput.value = '';
+        contentInput.value = '';
+        tagsInput.value = '';
+        summaryInput.value = '';
+        scanImages();
+    }
+
+    function getPersistableResults() {
+        return Object.fromEntries(
+            Object.entries(independentResults).filter(([, data]) => !isGenerationErrorResult(data))
+        );
+    }
+
+    function saveStateInputs() {
+        const state = {
+            results: getPersistableResults(),
+            tab: currentTab,
+            category: document.getElementById('categorySelect').value,
+            topic: document.getElementById('topicInput').value
+        };
+        localStorage.setItem('independentBlogState', JSON.stringify(state));
+    }
+
+    function loadState() {
+        try {
+            const savedState = localStorage.getItem('independentBlogState');
+            if (savedState) {
+                const state = JSON.parse(savedState);
+                if (state.category) document.getElementById('categorySelect').value = state.category;
+                if (state.topic) document.getElementById('topicInput').value = state.topic;
+                
+                const savedResults = Object.fromEntries(
+                    Object.entries(state.results || {}).filter(([, data]) => !isGenerationErrorResult(data))
+                );
+
+                if (Object.keys(savedResults).length > 0) {
+                    independentResults = savedResults;
+                    currentTab = state.tab || 'wordpress';
+                    
+                    // 탭이 유효한지 확인 (새로 연동된 계정이 있을 수 있으므로)
+                    if (!document.querySelector(`button[onclick="switchTab('${currentTab}')"]`)) {
+                        currentTab = 'wordpress';
+                    }
+                    loadTabData(currentTab);
+                    renderTabs(); // 탭 활성화 상태 갱신
+                } else if (state.results && Object.keys(state.results).length > 0) {
+                    localStorage.removeItem('independentBlogState');
+                }
+            }
+        } catch (e) {
+            console.warn('Failed to load state from localStorage', e);
+        }
     }
 
     let currentMode = 'edit';
@@ -647,6 +818,8 @@
                 // 언어 코드 매핑
                 if (tid === 'wordpress') {
                     platform_langs['wordpress'] = 'ko';
+                } else if (['telegram', 'facebook', 'instagram', 'tiktok'].includes(tid)) {
+                    platform_langs[tid] = 'ko';
                 } else {
                     const accId = tid.split(':')[1];
                     const acc = connectedAccounts.find(a => String(a.id) === String(accId));
@@ -661,6 +834,18 @@
             const firstTid = targetIds[0];
             const mainData = independentResults[firstTid];
 
+            const social_assets = {};
+            platforms.forEach(tid => {
+                if (['telegram', 'facebook', 'instagram', 'tiktok'].includes(tid)) {
+                    const data = independentResults[tid] || {};
+                    social_assets[tid] = {
+                        caption: [data.title, data.summary].filter(Boolean).join('\n\n'),
+                        image_urls: Array.from((data.content || '').matchAll(/<img[^>]+src="([^"]+)"/g)).map(m => m[1]),
+                        video_urls: Array.from((data.content || '').matchAll(/<(?:video|source)[^>]+src="([^"]+)"/g)).map(m => m[1])
+                    };
+                }
+            });
+
             const payload = {
                 title: mainData.title,
                 content: mainData.content,
@@ -669,7 +854,8 @@
                 platforms: platforms,
                 contents: contents,
                 metadata: metadata,
-                platform_langs: platform_langs
+                platform_langs: platform_langs,
+                social_assets: social_assets
             };
 
             const res = await fetch('/api/blog/post', {
@@ -695,7 +881,7 @@
                 });
 
                 if (failureCount === 0) {
-                    Utils.showToast(`🎉 모든 블로그(${successCount}개)에 성공적으로 게시되었습니다!`, 'success');
+                    Utils.showToast(`선택한 ${successCount}개 플랫폼에 모두 게시되었습니다.`, 'success');
                 } else {
                     Utils.showToast(`${successCount}개 성공, ${failureCount}개 실패. 오류: ${errorMessages.join(', ')}`, 'warning');
                 }
@@ -711,71 +897,79 @@
         }
     }
 
-    // 3. 이미지 생성 기능 (무조건 한국어 우선 생성 및 전체 동기화)
+    // 3. 이미지 생성 기능 (각 언어별로 독립적인 맞춤 이미지 자동 생성)
     async function generateImage() {
-        // 1. 한국어(WordPress) 본문 우선 확보
-        let wpContent = independentResults['wordpress'] ? independentResults['wordpress'].content : "";
-        if (!wpContent || wpContent.length < 50) {
-            // 한국어가 없으면 현재 보고 있는 탭이라도 사용
-            wpContent = document.getElementById('postContent').value.trim();
-        }
-
-        if (!wpContent) {
-            Utils.showToast('이미지를 삽입할 본문 내용이 필요합니다. 먼저 한국어 내용을 생성해 주세요.', 'warning');
+        const tabs = Object.keys(independentResults);
+        if (tabs.length === 0) {
+            Utils.showToast('이미지를 생성할 블로그 내용이 없습니다. 먼저 텍스트를 생성해 주세요.', 'warning');
             return;
         }
 
         const count = parseInt(document.getElementById('imgCount').value) || 1;
-        const noHuman = document.getElementById('noHumanToggle').checked; // 사람 제거 토글 상태 읽기
+        const noHuman = document.getElementById('noHumanToggle').checked;
         const btn = document.getElementById('btnImgGen');
         const originalText = btn.innerHTML;
 
         btn.disabled = true;
-        btn.innerHTML = '<span class="animate-spin inline-block">⏳</span><span class="font-bold text-sm ml-2">생성 중...</span>';
+        btn.innerHTML = '<span class="animate-spin inline-block">⏳</span><span class="font-bold text-sm ml-2">언어별 개별 이미지 생성 중...</span>';
+
+        let successCount = 0;
+        let failCount = 0;
+        const failureMessages = [];
 
         try {
-            // 백엔드 API: /api/blog/generate-images (한국어 본문을 기준으로 이미지 생성 및 WP 미디어 라이브러리 업로드)
-            const res = await fetch('/api/blog/generate-images', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: wpContent,
-                    image_count: count,
-                    project_id: null,
-                    no_human: noHuman // 사람 제거 옵션 전달
-                })
-            });
-            const data = await res.json();
+            // 순차적으로 생성하여 API Rate Limit 방지 및 안정성 확보
+            for (const tab of tabs) {
+                const content = independentResults[tab].content;
+                if (!content || content.length < 50) continue;
 
-            if (data.status === 'ok' && data.content) {
-                // [핵심] 1. 한국어 본문에 이미지 적용
-                if (independentResults['wordpress']) {
-                    independentResults['wordpress'].content = data.content;
-                }
-                
-                // [핵심] 2. 생성된 이미지 태그들 추출 (<img ... src="WP_MEDIA_URL" ...>)
-                const imgRegex = /<img[^>]+src="([^">]+)"[^>]*>/g;
-                const matches = [...data.content.matchAll(imgRegex)];
-                const imgTags = matches.map(m => m[0]); // 전체 img 태그 배열
+                try {
+                    const res = await fetch('/api/blog/generate-images', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            content: content,
+                            image_count: count,
+                            project_id: null,
+                            no_human: noHuman
+                        })
+                    });
+                    const data = await res.json();
 
-                if (imgTags.length > 0) {
-                    // [공통 개선] 이미지 배포 로직 호출
-                    imgTags.forEach(tag => distributeImageToAllTabs(tag));
-                    
-                    // 현재 보고 있는 탭 갱신
-                    document.getElementById('postContent').value = independentResults[currentTab].content;
-                    saveCurrentTabData();
-                    if (typeof currentMode !== 'undefined' && currentMode === 'preview') {
-                        updatePreview();
+                    if (data.status === 'ok' && data.content && Array.isArray(data.images) && data.images.length > 0) {
+                        independentResults[tab].content = data.content;
+                        successCount++;
+                    } else {
+                        const reason = data.error || data.message || '이미지가 실제로 생성되지 않았습니다.';
+                        console.error(`Tab ${tab} image generation failed:`, reason);
+                        failureMessages.push(`${tab}: ${reason}`);
+                        failCount++;
                     }
-                    scanImages(); // 이미지 생성 후 대시보드 갱신
-                    
-                    Utils.showToast(`🎉 ${imgTags.length}개의 고화질 이미지가 모든 언어 블로그에 동시 연동되었습니다!`, 'success');
+                } catch (e) {
+                    console.error(`Tab ${tab} image generation error:`, e);
+                    failureMessages.push(`${tab}: ${e.message || '요청 중 오류가 발생했습니다.'}`);
+                    failCount++;
+                }
+            }
+
+            // 현재 보고 있는 탭 갱신
+            if (independentResults[currentTab]) {
+                document.getElementById('postContent').value = independentResults[currentTab].content;
+            }
+            saveCurrentTabData();
+            if (typeof currentMode !== 'undefined' && currentMode === 'preview') {
+                updatePreview();
+            }
+            scanImages(); // 이미지 생성 후 대시보드 갱신
+            
+            if (successCount > 0) {
+                if (failCount > 0) {
+                    Utils.showToast(`${successCount}개 성공, ${failCount}개 실패. ${failureMessages[0]}`, 'warning');
                 } else {
-                    Utils.showToast('이미지는 생성되었으나 본문 삽입에 실패했습니다.', 'warning');
+                    Utils.showToast(`🎉 ${successCount}개 블로그에 각각 독립적인 맞춤 이미지가 생성 및 삽입되었습니다!`, 'success');
                 }
             } else {
-                throw new Error(data.error || '이미지 생성 및 삽입에 실패했습니다.');
+                Utils.showToast(failureMessages[0] || '이미지 생성에 모두 실패했습니다.', 'error');
             }
         } catch (e) {
             console.error('Image Generation Error:', e);
@@ -792,15 +986,14 @@
         const manager = document.getElementById('imageManager');
         const list = document.getElementById('imageList');
         
-        // 정규식: premium-blog-image div 또는 figure 블록 내부의 img 태그 추출
-        // 최대한 블록 전체를 잡기 위해 시도
-        const imgRegex = /<div[^>]*class="premium-blog-image"[^>]*>[\s\S]*?<img[^>]*src="([^">]+)"[^>]*>[\s\S]*?<\/div>|<figure[^>]*>[\s\S]*?<img[^>]*src="([^">]+)"[^>]*>[\s\S]*?<\/figure>|<img[^>]*src="([^">]+)"[^>]*>/gi;
+        // 정규식: premium-blog-image div, figure 블록, 일반 img 태그, 또는 마크다운 이미지 태그 추출
+        const imgRegex = /<div[^>]*class="premium-blog-image"[^>]*>[\s\S]*?<img[^>]*src="([^">]+)"[^>]*>[\s\S]*?<\/div>|<figure[^>]*>[\s\S]*?<img[^>]*src="([^">]+)"[^>]*>[\s\S]*?<\/figure>|<img[^>]*src="([^">]+)"[^>]*>|!\[[^\]]*\]\(([^)]+)\)/gi;
         
         const images = [];
         let match;
         while ((match = imgRegex.exec(content)) !== null) {
             const fullTag = match[0];
-            const src = match[1] || match[2] || match[3];
+            const src = match[1] || match[2] || match[3] || match[4];
             if (src) images.push({ fullTag, src });
         }
 
@@ -825,14 +1018,22 @@
         `).join('');
     }
 
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     function removeImageFromContent(src) {
         if (!confirm('정말 이 이미지를 본문에서 영구적으로 삭제하시겠습니까?')) return;
         
         const editor = document.getElementById('postContent');
         let content = editor.value;
         
-        // 해당 src를 포함하는 div 또는 figure 블록을 정밀 타격하여 제거
-        const blockRegex = new RegExp(`<div[^>]*class="premium-blog-image"[^>]*>[\\s\\S]*?<img[^>]*src="${src}"[\\s\\S]*?</div>|<figure[^>]*>[\\s\\S]*?<img[^>]*src="${src}"[\\s\\S]*?</figure>|<img[^>]*src="${src}"[^>]*>`, 'gi');
+        // 정규식 특수문자 이스케이프 (URL에 괄호, ? 등이 들어갔을 때 에러 방지)
+        const escapedSrc = escapeRegExp(src);
+        
+        // 해당 src를 포함하는 div, figure, img 태그 또는 마크다운 이미지를 정밀 타격하여 제거
+        const blockRegex = new RegExp(`<div[^>]*class="premium-blog-image"[^>]*>[\\s\\S]*?<img[^>]*src="${escapedSrc}"[\\s\\S]*?</div>|<figure[^>]*>[\\s\\S]*?<img[^>]*src="${escapedSrc}"[\\s\\S]*?</figure>|<img[^>]*src="${escapedSrc}"[^>]*>|!\\[[^\\]]*\\]\\(${escapedSrc}\\)`, 'gi');
+
         
         const newContent = content.replace(blockRegex, '').trim();
         editor.value = newContent;
@@ -909,6 +1110,50 @@
         }
     }
 
-    document.addEventListener('DOMContentLoaded', initPage);
+    async function loadGeneralTrends() {
+        const container = document.getElementById('generalTrendContainer');
+        const category = document.getElementById('categorySelect').value;
+        const btn = document.getElementById('btnLoadTrends');
+
+        clearEditorIfGenerationError();
+        saveStateInputs();
+        
+        container.innerHTML = '<span class="text-[10px] text-gray-400 italic">AI가 폭발적 조회수를 낼 수 있는 카테고리 트렌드를 분석 중입니다...</span>';
+        
+        try {
+            const res = await fetch(`/api/blog/trends?category=${encodeURIComponent(category)}`);
+            const data = await res.json();
+            
+            if (data.status === 'ok' && data.trends && data.trends.length > 0) {
+                container.innerHTML = '';
+                data.trends.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.className = 'text-[10px] font-bold px-3 py-1.5 rounded-full bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-purple-500 hover:text-white transition-all border border-gray-200 dark:border-gray-700 shadow-sm whitespace-nowrap overflow-hidden text-ellipsis max-w-[250px]';
+                    btn.innerHTML = `🔥 ${item.keyword}`;
+                    btn.title = item.reason;
+                    btn.onclick = () => {
+                        const input = document.getElementById('topicInput');
+                        input.value = item.keyword;
+                        input.focus();
+                        saveStateInputs();
+                        // Flash effect
+                        input.classList.add('ring-2', 'ring-purple-500', 'bg-purple-50', 'dark:bg-purple-900/20');
+                        setTimeout(() => input.classList.remove('ring-2', 'ring-purple-500', 'bg-purple-50', 'dark:bg-purple-900/20'), 500);
+                    };
+                    container.appendChild(btn);
+                });
+            } else {
+                container.innerHTML = '<span class="text-[10px] text-gray-500 italic">추천 후보가 없습니다. 직접 입력한 주제로 작성할 수 있습니다.</span>';
+            }
+        } catch (e) {
+            container.innerHTML = '<span class="text-[10px] text-gray-500 italic">추천을 불러오지 못했습니다. 직접 입력한 주제로 작성할 수 있습니다.</span>';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        initPage();
+        
+        document.getElementById('categorySelect').addEventListener('change', saveStateInputs);
+    });
 </script>
 {% endblock %}

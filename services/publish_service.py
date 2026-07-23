@@ -4,6 +4,9 @@ import re
 from typing import Dict, Any, List, Optional
 from services.gemini_service import gemini_service
 from services.blog_service import blog_service
+from services.ai_quality_service import ai_quality_service
+from services.publish_utils import normalize_publish_result, run_with_backoff
+from services.social_publish_service import social_publish_service
 import database as db
 
 
@@ -69,7 +72,9 @@ class PublishService:
     def build_blog_html(self, content: str, images: List[Dict]) -> str:
         """블로그 글에 이미지를 삽입하여 HTML 생성 (기존 HTML 구조 보존 기능 포함)"""
         if not images:
-            return content
+            # 이미지가 없더라도 남은 플레이스홀더([[IMAGE_X]])는 제거해야 함
+            content = re.sub(r'\[{1,2}(?:IMAGE|이미지|사진|그림)[^\]]*\]{1,2}', '', content, flags=re.IGNORECASE)
+            return re.sub(r'\((?:이미지|사진|그림)\s*\d*\)', '', content, flags=re.IGNORECASE)
 
         # 1. 플레이스홀더([[IMAGE_X]]) 치환 우선 처리
         processed_content = content
@@ -135,6 +140,9 @@ class PublishService:
                     else:
                         current_html += img_html
             
+            # 최종 클린업: 치환되지 않은 남은 플레이스홀더 제거
+            current_html = re.sub(r'\[{1,2}(?:IMAGE|이미지|사진|그림)[^\]]*\]{1,2}', '', current_html, flags=re.IGNORECASE)
+            current_html = re.sub(r'\((?:이미지|사진|그림)\s*\d*\)', '', current_html, flags=re.IGNORECASE)
             return current_html
 
         else:
@@ -167,7 +175,11 @@ class PublishService:
                 html_parts.append(get_img_html(img.get('image_url', ''), img.get('caption', '')))
                 img_ptr += 1
 
-            return '\n'.join(html_parts)
+            # 최종 클린업: 치환되지 않은 남은 플레이스홀더 제거
+            final_result = '\n'.join(html_parts)
+            final_result = re.sub(r'\[{1,2}(?:IMAGE|이미지|사진|그림)[^\]]*\]{1,2}', '', final_result, flags=re.IGNORECASE)
+            final_result = re.sub(r'\((?:이미지|사진|그림)\s*\d*\)', '', final_result, flags=re.IGNORECASE)
+            return final_result
 
     async def post_to_blogs(
         self,
@@ -175,19 +187,67 @@ class PublishService:
         title: str,
         html_content: str,
         tags: List[str] = None,
-        platforms: List[str] = None
+        platforms: List[str] = None,
+        media_items: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        """WordPress + Blogger 동시 게시"""
+        """WordPress + Blogger + Social 동시 게시"""
         platforms = platforms or ["wordpress", "blogger"]
         results = {}
+        quality_reviews = {}
+        media_items = media_items or []
+
+        public_video_urls = []
+        for item in media_items:
+            video_url = str(item.get("video_url") or "").strip()
+            if video_url.startswith("http://") or video_url.startswith("https://"):
+                public_video_urls.append(video_url)
+
+        tiktok_validation_error = None
+        if "tiktok" in platforms:
+            if not public_video_urls:
+                tiktok_validation_error = {
+                    "status": "error",
+                    "error": "TikTok 게시에는 공개 video_url 이 필요합니다.",
+                    "error_type": "validation",
+                    "retryable": False,
+                    "details": [
+                        "TikTok이 선택되었지만 공개 비디오 URL이 없습니다.",
+                        "비디오 파일을 업로드한 뒤 다시 시도하세요.",
+                    ],
+                }
+            elif len(public_video_urls) > 1:
+                public_video_urls = public_video_urls[:1]
 
         for platform in platforms:
             try:
                 if platform == "wordpress":
-                    res = await blog_service.post_to_wordpress(
-                        title=title, content=html_content, tags=tags
+                    quality = await ai_quality_service.review_and_improve(
+                        title=title,
+                        content=html_content,
+                        tags=tags,
+                        categories=[],
+                        summary=None,
+                        platform="wordpress",
+                        language="ko",
                     )
-                    results["wordpress"] = res
+                    post_title = quality.get("title", title)
+                    post_content = quality.get("content", html_content)
+                    post_tags = quality.get("tags", tags)
+                    quality_reviews["wordpress"] = {
+                        "status": quality.get("status"),
+                        "score": quality.get("score"),
+                        "issues": quality.get("issues", []),
+                        "improvements": quality.get("improvements", []),
+                        "original_title": title,
+                        "improved_title": post_title,
+                    }
+
+                    async def _post_wp():
+                        return await blog_service.post_to_wordpress(
+                            title=post_title, content=post_content, tags=post_tags
+                        )
+                    res = await run_with_backoff(_post_wp, platform="wordpress", max_attempts=3, base_delay=1.0)
+                    results["wordpress"] = normalize_publish_result("wordpress", res)
                     if res.get("status") == "ok":
                         db.update_publish_session(
                             session_id,
@@ -195,23 +255,78 @@ class PublishService:
                             blog_wp_post_id=str(res.get("post_id", ""))
                         )
                 elif platform == "blogger":
-                    res = await blog_service.post_to_blogger(
-                        title=title, content=html_content, tags=tags
+                    quality = await ai_quality_service.review_and_improve(
+                        title=title,
+                        content=html_content,
+                        tags=tags,
+                        categories=[],
+                        summary=None,
+                        platform="blogger",
+                        language="ko",
                     )
-                    results["blogger"] = res
+                    post_title = quality.get("title", title)
+                    post_content = quality.get("content", html_content)
+                    post_tags = quality.get("tags", tags)
+                    quality_reviews["blogger"] = {
+                        "status": quality.get("status"),
+                        "score": quality.get("score"),
+                        "issues": quality.get("issues", []),
+                        "improvements": quality.get("improvements", []),
+                        "original_title": title,
+                        "improved_title": post_title,
+                    }
+
+                    async def _post_blogger():
+                        return await blog_service.post_to_blogger(
+                            title=post_title, content=post_content, tags=post_tags
+                        )
+                    res = await run_with_backoff(_post_blogger, platform="blogger", max_attempts=3, base_delay=1.0)
+                    results["blogger"] = normalize_publish_result("blogger", res)
                     if res.get("status") == "ok":
                         db.update_publish_session(
                             session_id,
                             blog_blogger_url=res.get("url", ""),
                             blog_blogger_post_id=str(res.get("post_id", ""))
                         )
+                elif platform == "facebook":
+                    res = await social_publish_service.publish_facebook(
+                        title=title,
+                        html_content=html_content,
+                        tags=tags,
+                    )
+                    results["facebook"] = normalize_publish_result("facebook", res)
+                elif platform == "instagram":
+                    res = await social_publish_service.publish_instagram(
+                        title=title,
+                        html_content=html_content,
+                        tags=tags,
+                    )
+                    results["instagram"] = normalize_publish_result("instagram", res)
+                elif platform == "tiktok":
+                    if tiktok_validation_error:
+                        results["tiktok"] = normalize_publish_result("tiktok", tiktok_validation_error)
+                        continue
+                    res = await social_publish_service.publish_tiktok(
+                        title=title,
+                        html_content=html_content,
+                        tags=tags,
+                        video_urls=public_video_urls,
+                    )
+                    results["tiktok"] = normalize_publish_result("tiktok", res)
+                else:
+                    results[platform] = normalize_publish_result(platform, {
+                        "status": "error",
+                        "error": f"지원하지 않는 플랫폼입니다: {platform}",
+                    })
             except Exception as e:
-                results[platform] = {"status": "error", "error": str(e)}
+                results[platform] = normalize_publish_result(platform, {"status": "error", "error": str(e)})
 
-        # 상태 업데이트
         any_ok = any(r.get("status") == "ok" for r in results.values())
         if any_ok:
             db.update_publish_session(session_id, step="blog_done")
+
+        if quality_reviews:
+            results["_quality_reviews"] = quality_reviews
 
         return results
 

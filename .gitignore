@@ -1,46 +1,41 @@
-# Python
+# Environment
+.env
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Database
+# Database (runtime data)
 *.db
-*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Build output
+build/
+dist/
+*.spec
 
 # Logs
+logs/
 *.log
-temp_logs.txt
-wp_logs.txt
+
+# Generated output
+output/
+temp_uploads/
+
+# Scratch/test scripts
+scratch/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Environment
-.env
-.venv
-env/
-venv/
-ENV/
+# Root JSON artifacts
+/templates_dump.json
+/templates_inspect.json
 
-# Project specific
-scratch/
-output/
-.gemini/

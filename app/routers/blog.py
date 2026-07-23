@@ -3,7 +3,16 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from services.blog_service import blog_service
+from services.ai_quality_service import ai_quality_service
 from services.source_service import source_service
+from services.publish_utils import (
+    normalize_publish_result,
+    open_published_urls,
+    run_with_backoff,
+    validate_blog_post_payload,
+    validate_publish_html,
+)
+from services.social_publish_service import social_publish_service
 from config import config
 import database as db
 import httpx
@@ -16,6 +25,7 @@ router = APIRouter(prefix="/api/blog", tags=["Blog"])
 
 class BlogMetadataAnalysisRequest(BaseModel):
     content: str
+    language: Optional[str] = "ko"
 
 class IndependentBlogGenerateRequest(BaseModel):
     topic: str
@@ -95,7 +105,7 @@ async def account_oauth_start(account_id: int):
     acc = db.get_blogger_account(account_id)
     if not acc:
         raise HTTPException(404, "계정을 찾을 수 없습니다.")
-    client_id = acc.get("client_id") or config.BLOG_CLIENT_ID
+    client_id = acc.get("client_id") or config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
     if not client_id:
         raise HTTPException(400, "Client ID가 설정되지 않았습니다.")
     params = urlencode({
@@ -182,6 +192,7 @@ class BlogPostRequest(BaseModel):
     platform_langs: dict = {}  # e.g. {"wordpress": "ko", "blogger_1": "ja", "blogger_2": "en"}
     contents: Optional[dict] = None  # e.g. {"wordpress": "html...", "blogger_1": "html..."}
     metadata: Optional[dict] = None  # e.g. {"wordpress": {"title": "...", "tags": [], ...}}
+    social_assets: Optional[dict] = None  # e.g. {"instagram": {"caption": "...", "image_urls": [...]}}
 
 
 class BlogAutoProcessRequest(BaseModel):
@@ -191,6 +202,16 @@ class BlogAutoProcessRequest(BaseModel):
     user_notes: str = ""
     category: Optional[str] = None
     script: Optional[str] = None
+
+@router.get("/trends")
+async def get_general_blog_trends(category: str = "General"):
+    """일반 블로그 카테고리별 인기 추천 주제 반환"""
+    from services.gemini_service import gemini_service
+    # Recommendation chips are a helper, not the main writing flow. Keep this
+    # endpoint instant and independent from paid AI keys so a bad Claude/OpenAI
+    # key cannot block the page.
+    trends = gemini_service.fallback_general_blog_trends(category)
+    return {"status": "ok", "trends": trends, "source": "local"}
 
 @router.post("/auto-process/{project_id}")
 async def auto_process_blog(project_id: int, req: BlogAutoProcessRequest):
@@ -275,16 +296,29 @@ async def generate_blog_images(req: BlogImageGenerateRequest):
 @router.post("/analyze-metadata")
 async def analyze_blog_metadata(req: BlogMetadataAnalysisRequest):
     """블로그 본문 분석하여 메태데이터 추출"""
-    result = await blog_service.analyze_metadata(req.content)
+    result = await blog_service.analyze_metadata(req.content, language=req.language)
     return result
 
 @router.post("/post")
 async def post_blog(req: BlogPostRequest):
     """블로그 게시 (워드프레스/다중 Blogger 계정 및 언어별 번역 지원)"""
     results = {}
+    quality_reviews = {}
     platforms = req.platforms or ["wordpress"]
     platform_langs = req.platform_langs or {}
+    payload_validation = validate_blog_post_payload(req.title, req.content, platforms)
+    html_validation = validate_publish_html(req.content)
+    validation_errors = payload_validation["errors"] + html_validation["errors"]
+    validation_warnings = payload_validation["warnings"] + html_validation["warnings"]
+    if validation_errors:
+        return {
+            "status": "error",
+            "error": "invalid publish payload",
+            "errors": validation_errors,
+            "warnings": validation_warnings,
+        }
     processed_content = req.content # 대표 본문 (텔레그램 등에서 사용)
+    social_assets = req.social_assets or {}
 
     # 1. 사전 처리: 로컬 이미지(/output/)를 WP에 한 번만 업로드하여 공개 URL로 치환 (모든 탭 공통)
     # 탭별 독립 콘텐츠(req.contents)가 있는 경우와 기본 본문(req.content) 모두 처리
@@ -328,14 +362,39 @@ async def post_blog(req: BlogPostRequest):
 
             # 워드프레스 게시 전 본문의 로컬 이미지들을 워드프레스 미디어 라이브러리로 확실히 변환
             final_content = await blog_service.upload_local_images_to_public(final_content)
-            
-            w_res = await blog_service.post_to_wordpress(
-                title=final_title, 
-                content=final_content, 
-                tags=final_tags, 
+
+            quality = await ai_quality_service.review_and_improve(
+                title=final_title,
+                content=final_content,
+                tags=final_tags,
                 categories=final_categories,
-                summary=final_summary
+                summary=final_summary,
+                platform="wordpress",
+                language=platform_langs.get("wordpress", "ko"),
             )
+            quality_reviews["wordpress"] = {
+                "status": quality.get("status"),
+                "score": quality.get("score"),
+                "issues": quality.get("issues", []),
+                "improvements": quality.get("improvements", []),
+                "original_title": final_title,
+                "improved_title": quality.get("title", final_title),
+            }
+            final_title = quality.get("title", final_title)
+            final_content = quality.get("content", final_content)
+            final_tags = quality.get("tags", final_tags)
+            final_categories = quality.get("categories", final_categories)
+            final_summary = quality.get("summary", final_summary)
+            
+            async def _post_wp():
+                return await blog_service.post_to_wordpress(
+                    title=final_title,
+                    content=final_content,
+                    tags=final_tags,
+                    categories=final_categories,
+                    summary=final_summary,
+                )
+            w_res = await run_with_backoff(_post_wp, platform="wordpress", max_attempts=3, base_delay=1.0)
             
             # 리트라이용 페이로드 저장
             w_res["payload"] = {
@@ -355,9 +414,45 @@ async def post_blog(req: BlogPostRequest):
             print(f"[BlogPost] WordPress posting failed (Step 1): {e}")
             results["wordpress"] = {"status": "error", "error": str(e)}
 
-    # WP 게시 후에도 이미지가 없으면 기본 본문에서 추출 시도 (Fallback)
-    if not source_images:
-        source_images = blog_service.extract_image_tags(req.content)
+    # [Fix] 모든 탭(WP + 각 언어별 탭)에서 사용된 모든 이미지 태그 통합 수집
+    # 한 플랫폼에만 있는 이미지도 다른 플랫폼에서 재사용할 수 있도록 풀(Pool)을 만듬
+    all_source_images = []
+    
+    # 1. 기본 본문 및 WP 본문에서 추출
+    all_source_images.extend(blog_service.extract_image_tags(req.content))
+    if "wordpress" in results and results["wordpress"].get("status") == "ok":
+        # WP 게시 성공 후 변환된 본문이 있을 경우 추가 (이미 WP URL로 치환된 상태)
+        w_payload = results["wordpress"].get("payload", {})
+        all_source_images.extend(blog_service.extract_image_tags(w_payload.get("content", "")))
+
+    # 2. 각 언어별 독립 콘텐츠(req.contents)가 있다면 거기서도 추출
+    if req.contents:
+        for c_html in req.contents.values():
+            all_source_images.extend(blog_service.extract_image_tags(c_html))
+            
+    # 3. 중복 제거 (이미지 src URL 기준)
+    unique_images = {}
+    import re as re_img
+    for tag in all_source_images:
+        m = re_img.search(r'src="([^"]+)"', tag)
+        if m:
+            url = m.group(1)
+            # /output/ 등 로컬 경로는 이미 위에서 WP URL로 변환되었어야 함
+            if url not in unique_images:
+                unique_images[url] = tag
+    
+    source_images = list(unique_images.values())
+    print(f"[BlogPost] Global image pool updated: {len(source_images)} unique images available for all blogs.")
+
+    social_target_ids = [
+        p for p in platforms
+        if p == "facebook"
+        or p == "instagram"
+        or p == "tiktok"
+        or p.startswith("facebook:")
+        or p.startswith("instagram:")
+        or p.startswith("tiktok:")
+    ]
 
     # 2. 다국어 Blogger 계정 병렬 게시 (비동기 엔진 가동)
     selected_blogger_ids = []
@@ -411,10 +506,41 @@ async def post_blog(req: BlogPostRequest):
                         if source_images:
                             f_content = blog_service.inject_images_into_content(f_content, source_images)
 
-                    res = await blog_service.post_to_blogger(
-                        title=f_title, content=f_content, tags=f_tags, account_id=acc_id,
-                        summary=f_summary, category=f_category, image_tags=source_images
+                    quality = await ai_quality_service.review_and_improve(
+                        title=f_title,
+                        content=f_content,
+                        tags=f_tags,
+                        categories=[f_category] if f_category else [],
+                        summary=f_summary,
+                        platform=p_key,
+                        language=target_lang,
                     )
+                    quality_reviews[p_key] = {
+                        "status": quality.get("status"),
+                        "score": quality.get("score"),
+                        "issues": quality.get("issues", []),
+                        "improvements": quality.get("improvements", []),
+                        "original_title": f_title,
+                        "improved_title": quality.get("title", f_title),
+                    }
+                    f_title = quality.get("title", f_title)
+                    f_content = quality.get("content", f_content)
+                    f_tags = quality.get("tags", f_tags)
+                    f_summary = quality.get("summary", f_summary)
+                    improved_categories = quality.get("categories") or ([f_category] if f_category else [])
+                    f_category = improved_categories[0] if improved_categories else f_category
+
+                    async def _post_blogger():
+                        return await blog_service.post_to_blogger(
+                            title=f_title,
+                            content=f_content,
+                            tags=f_tags,
+                            account_id=acc_id,
+                            summary=f_summary,
+                            category=f_category,
+                            image_tags=source_images,
+                        )
+                    res = await run_with_backoff(_post_blogger, platform=p_key, max_attempts=5, base_delay=6.0, max_delay=60.0)
                     
                     # 리트라이용 페이로드 저장
                     res["payload"] = {
@@ -427,15 +553,36 @@ async def post_blog(req: BlogPostRequest):
                         "image_tags": source_images
                     }
                     
-                    print(f"[Parallel] {acc_name} DONE: {res.get('status')}")
+                    print(f"[BloggerPost] {acc_name} DONE: {res.get('status')}")
                     return p_key, {**res, "account_name": acc_name}
                 except Exception as e:
-                    print(f"[Parallel] {acc_name} FAILED: {e}")
+                    print(f"[BloggerPost] {acc_name} FAILED: {e}")
+                    return p_key, {
+                        "status": "error",
+                        "account_name": acc_name,
+                        "error": str(e),
+                        "error_type": "unknown",
+                        "retryable": False,
+                    }
 
-            # 7개(?) 이상의 계정을 동시에 병렬 실행
-            print(f"[BlogPost] Step 2: Parallel posting to {len(connected_accounts)} Blogger accounts...")
-            parallel_results = await asyncio.gather(*[post_single_blogger(acc) for acc in connected_accounts])
-            for key, val in parallel_results:
+            # Blogger API는 계정/프로젝트 단위 쿼터가 보수적이므로 순차 게시한다.
+            print(f"[BlogPost] Step 2: Sequential posting to {len(connected_accounts)} Blogger accounts...")
+            parallel_results = []
+            for idx, acc in enumerate(connected_accounts):
+                if idx > 0:
+                    await asyncio.sleep(3)
+                parallel_results.append(await post_single_blogger(acc))
+            for item in parallel_results:
+                if isinstance(item, Exception):
+                    key = f"blogger_unknown_{len(results)}"
+                    results[key] = {
+                        "status": "error",
+                        "error": str(item),
+                        "error_type": "unknown",
+                        "retryable": False,
+                    }
+                    continue
+                key, val = item
                 results[key] = val
 
     # 'telegram' 처리
@@ -443,26 +590,26 @@ async def post_blog(req: BlogPostRequest):
     # 'telegram' 처리
     # platforms list에서 'telegram' 또는 'telegram:{chat_id}' 형식을 모두 찾음
     tg_selected = [p for p in platforms if p == "telegram" or p.startswith("telegram:")]
-    
+
     if tg_selected:
         try:
             from services.telegram_service import telegram_service
             import re
             import json
             from database import get_global_setting
-            
+
             # 텔레그램용 요약 메시지 생성 (HTML 태그 제거)
             clean_text = re.sub(r'<[^>]+>', '', processed_content)
             # 불필요한 공백/줄바꿈 정리
             clean_text = re.sub(r'\n\s*\n', '\n', clean_text).strip()
             summary = clean_text[:300] + "..." if len(clean_text) > 300 else clean_text
-            
+
             # 본문에 포함된 첫 번째 이미지 추출 시도 (공개 URL)
             img_match = re.search(r'<img [^>]*src="([^"]+)"[^>]*>', processed_content)
             first_img = img_match.group(1) if img_match else None
-            
+
             tg_text = f"<b>{req.title}</b>\n\n{summary}"
-            
+
             # 다중 채널 방송 설정 로드
             channels_raw = get_global_setting("telegram_channels", "[]")
             if isinstance(channels_raw, str):
@@ -470,7 +617,7 @@ async def post_blog(req: BlogPostRequest):
                 except: all_channels = []
             else:
                 all_channels = channels_raw or []
-                
+
             # 기본 Chat ID도 포함 (하위 호환)
             default_chat_id = get_global_setting("telegram_chat_id", "")
             if default_chat_id and not any(str(c.get('chat_id')) == str(default_chat_id) for c in all_channels):
@@ -495,13 +642,13 @@ async def post_blog(req: BlogPostRequest):
                 tg_statuses = []
                 for c_id in target_chat_ids:
                     if not c_id: continue
-                    
+
                     if first_img:
                         res = await telegram_service.send_photo(first_img, tg_text, chat_id=c_id)
                     else:
                         res = await telegram_service.send_message(tg_text, chat_id=c_id)
                     tg_statuses.append(res.get("status") == "ok")
-                
+
                 if all(tg_statuses):
                     results["telegram"] = {"status": "ok", "account_name": f"텔레그램({len(tg_statuses)}개 채널)"}
                 elif any(tg_statuses):
@@ -512,7 +659,69 @@ async def post_blog(req: BlogPostRequest):
             err_msg = f"Telegram Broadcast Error: {str(e)}"
             results["telegram"] = {"status": "error", "error": err_msg}
 
+    if social_target_ids:
+        import asyncio
+
+        async def post_social_target(target_id: str):
+            platform_name, _, configured_target = target_id.partition(":")
+            platform_name = platform_name.lower()
+            content_key = target_id if req.contents and target_id in req.contents else platform_name
+            metadata_key = target_id if req.metadata and target_id in req.metadata else platform_name
+            social_key = target_id if social_assets and target_id in social_assets else platform_name
+
+            platform_content = (req.contents or {}).get(content_key) or req.content
+            platform_meta = (req.metadata or {}).get(metadata_key, {}) if req.metadata else {}
+            asset = social_assets.get(social_key, {}) if social_assets else {}
+            title = platform_meta.get("title") or req.title
+            summary = platform_meta.get("summary") or req.summary
+            tags = platform_meta.get("tags") or req.tags
+
+            if asset.get("caption"):
+                summary = asset.get("caption")
+            if asset.get("image_urls") and asset.get("image_urls") and "<img" not in platform_content:
+                image_html = "".join([f'<img src="{url}" alt="social asset">' for url in asset.get("image_urls", [])])
+                platform_content = image_html + "\n" + platform_content
+
+            if platform_name == "facebook":
+                res = await social_publish_service.publish_facebook(
+                    title=title,
+                    html_content=platform_content,
+                    tags=tags,
+                    summary=summary,
+                    target_id=configured_target or None,
+                )
+            elif platform_name == "instagram":
+                res = await social_publish_service.publish_instagram(
+                    title=title,
+                    html_content=platform_content,
+                    tags=tags,
+                    summary=summary,
+                    target_id=configured_target or None,
+                )
+            elif platform_name == "tiktok":
+                res = await social_publish_service.publish_tiktok(
+                    title=title,
+                    html_content=platform_content,
+                    tags=tags,
+                    summary=summary,
+                    target_id=configured_target or None,
+                    video_urls=asset.get("video_urls") or [],
+                )
+            else:
+                res = {"status": "error", "error": f"지원하지 않는 소셜 플랫폼입니다: {target_id}"}
+
+            return target_id.replace(":", "_"), res
+
+        social_results = await asyncio.gather(*[post_social_target(target_id) for target_id in social_target_ids])
+        for key, value in social_results:
+            results[key] = value
+
     # 3. 로그 저장
+    results = {
+        platform: normalize_publish_result(platform, res)
+        for platform, res in results.items()
+    }
+
     for p_key, res in results.items():
         try:
             p_name = res.get("account_name", p_key)
@@ -530,10 +739,14 @@ async def post_blog(req: BlogPostRequest):
 
     any_ok = any(r.get("status") == "ok" for r in results.values())
     all_ok = all(r.get("status") == "ok" for r in results.values())
+    opened_urls = open_published_urls(results, context="blog-post")
 
     return {
         "status": "ok" if all_ok else ("partial" if any_ok else "error"),
-        "results": results
+        "results": results,
+        "warnings": validation_warnings,
+        "opened_urls": opened_urls,
+        "quality_reviews": quality_reviews,
     }
 
 
@@ -581,8 +794,8 @@ async def blogger_oauth_callback(request: Request):
     account_id = int(state) if state.isdigit() else None
     if account_id:
         acc = db.get_blogger_account(account_id)
-        client_id = (acc or {}).get("client_id") or config.BLOG_CLIENT_ID
-        client_secret = (acc or {}).get("client_secret") or config.BLOG_CLIENT_SECRET
+        client_id = (acc or {}).get("client_id") or config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
+        client_secret = (acc or {}).get("client_secret") or config.BLOG_CLIENT_SECRET or db.get_global_setting("blog_client_secret", "")
     else:
         client_id = config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
         client_secret = config.BLOG_CLIENT_SECRET or db.get_global_setting("blog_client_secret", "")
@@ -656,6 +869,19 @@ async def get_logs(limit: int = 100):
     return {"status": "ok", "logs": logs}
 
 
+@router.get("/quality-insights")
+async def get_quality_insights(limit: int = 20):
+    """AI 품질 개선 이력과 최근 게시 로그 기반 학습 요약"""
+    reviews = db.get_recent_ai_quality_reviews(limit)
+    return {
+        "status": "ok",
+        "enabled": ai_quality_service.is_enabled(),
+        "min_score": ai_quality_service.min_score(),
+        "learning_context": ai_quality_service.build_learning_context(),
+        "reviews": reviews,
+    }
+
+
 @router.post("/logs/{log_id}/retry")
 async def retry_log(log_id: int):
     """실패한 로그 재시도"""
@@ -679,23 +905,27 @@ async def retry_log(log_id: int):
         result = {"status": "error", "error": f"지원하지 않는 플랫폼: {platform}"}
 
         if platform == "wordpress":
-            result = await blog_service.post_to_wordpress(
-                title=payload["title"],
-                content=payload["content"],
-                tags=payload.get("tags", []),
-                categories=payload.get("categories", []),
-                summary=payload.get("summary")
-            )
+            async def _retry_wp():
+                return await blog_service.post_to_wordpress(
+                    title=payload["title"],
+                    content=payload["content"],
+                    tags=payload.get("tags", []),
+                    categories=payload.get("categories", []),
+                    summary=payload.get("summary")
+                )
+            result = await run_with_backoff(_retry_wp, platform=platform, max_attempts=3, base_delay=1.0)
         elif platform.startswith("blogger"):
-            result = await blog_service.post_to_blogger(
-                title=payload["title"],
-                content=payload["content"],
-                tags=payload.get("tags", []),
-                account_id=payload["account_id"],
-                summary=payload.get("summary"),
-                category=payload.get("category"),
-                image_tags=payload.get("image_tags", [])
-            )
+            async def _retry_blogger():
+                return await blog_service.post_to_blogger(
+                    title=payload["title"],
+                    content=payload["content"],
+                    tags=payload.get("tags", []),
+                    account_id=payload["account_id"],
+                    summary=payload.get("summary"),
+                    category=payload.get("category"),
+                    image_tags=payload.get("image_tags", [])
+                )
+            result = await run_with_backoff(_retry_blogger, platform=platform, max_attempts=3, base_delay=1.0)
         
         # 새 로그 추가
         p_name = result.get("account_name", row['account_name'])
@@ -709,6 +939,7 @@ async def retry_log(log_id: int):
             payload=payload # 동일 페이로드 유지
         )
 
+        result["opened_urls"] = open_published_urls(result, context="retry-post")
         return result
     except Exception as e:
         import traceback

@@ -12,16 +12,28 @@ from config import config
 class BlogService:
     async def check_all_api_connections(self) -> Dict[str, Any]:
         """모든 플랫폼의 연동 상태를 실시간으로 체크"""
+        text_provider = getattr(gemini_service, "selected_provider", "gemini")
+        provider_labels = {
+            "gemini": "Gemini",
+            "openai": "OpenAI",
+            "anthropic": "Anthropic Claude",
+        }
+        provider_label = provider_labels.get(text_provider, "Gemini")
         results = {
-            "gemini": {"status": "ok", "message": "연결됨"},
+            "gemini": {"status": "ok", "message": f"{provider_label} 연결됨"},
             "wordpress": {"status": "ok", "message": "연결됨"},
             "blogger": {"status": "ok", "message": "연결됨"},
             "telegram": {"status": "ok", "message": "연결됨"}
         }
 
-        # 1. Gemini 체크 (단순히 키가 있는지 확인)
-        if not config.GEMINI_API_KEY:
-             results["gemini"] = {"status": "error", "message": "API 키가 설정되지 않았습니다."}
+        # 1. 현재 선택된 글쓰기 AI 체크
+        provider_key_map = {
+            "gemini": config.GEMINI_API_KEY,
+            "openai": getattr(config, "OPENAI_API_KEY", ""),
+            "anthropic": getattr(config, "ANTHROPIC_API_KEY", ""),
+        }
+        if not provider_key_map.get(text_provider):
+            results["gemini"] = {"status": "error", "message": f"{provider_label} API 키가 설정되지 않았습니다."}
         
         # 2. WordPress 체크
         wp_res = await self.verify_wordpress_connection()
@@ -65,8 +77,8 @@ class BlogService:
                 acc = db.get_blogger_account(account_id)
                 if not acc:
                     return {"status": "error", "message": f"계정(ID:{account_id})을 찾을 수 없습니다."}
-                client_id = acc.get("client_id") or config.BLOG_CLIENT_ID
-                client_secret = acc.get("client_secret") or config.BLOG_CLIENT_SECRET
+                client_id = acc.get("client_id") or config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
+                client_secret = acc.get("client_secret") or config.BLOG_CLIENT_SECRET or db.get_global_setting("blog_client_secret", "")
                 refresh_token = acc.get("refresh_token", "")
             else:
                 client_id = config.BLOG_CLIENT_ID or db.get_global_setting("blog_client_id", "")
@@ -328,11 +340,17 @@ class BlogService:
 
             # 3. 본문에 이미지 지능적 삽입
             final_content = publish_service.build_blog_html(content, final_images_data)
-            
+            message = ""
+            if not image_points:
+                message = "이미지 삽입 위치를 찾지 못했습니다."
+            elif not generated_images:
+                message = "이미지 생성에 실패했습니다. 본문은 유지되었습니다."
+
             return {
                 "status": "ok",
                 "content": final_content,
-                "images": generated_images
+                "images": generated_images,
+                "message": message
             }
         except Exception as e:
             import traceback
@@ -350,7 +368,9 @@ class BlogService:
         blog_style: str, 
         language: str = "ko",
         user_notes: str = "",
-        category: str = None
+        category: str = None,
+        provider_override: str = "",
+        model_override: str = "",
     ) -> Dict[str, Any]:
         """소스로부터 블로그 포스팅 생성 핵심 로직"""
         try:
@@ -367,8 +387,14 @@ class BlogService:
     
             if content_data.get("status") == "error":
                 return {"status": "error", "error": content_data.get("message", "소스에서 내용을 추출하지 못했습니다.")}
-            if len(content_data.get("content", "").strip()) < 50:
-                return {"status": "error", "error": "소스에서 충분한 내용을 추출하지 못했습니다. (PDF 이미지 스캔본이거나 내용이 없는 페이지일 수 있습니다.)"}
+            # 1.5 최소 내용 길이 체크 (URL/유튜브는 50자, 직접 입력 텍스트는 5자)
+            min_content_len = 50 if source_type != "text" else 5
+            content_body = content_data.get("content", "").strip()
+            
+            if len(content_body) < min_content_len:
+                if source_type == "text":
+                    return {"status": "error", "error": f"입력된 주제나 키워드가 너무 짧습니다. (최소 {min_content_len}자 이상)"}
+                return {"status": "error", "error": "소스에서 충분한 내용을 추출하지 못했습니다. (URL이 잘못되었거나, 내용이 없는 페이지일 수 있습니다.)"}
     
             # 2. 블로그 생성 (Gemini)
             blog_data = await gemini_service.generate_blog_content(
@@ -377,7 +403,9 @@ class BlogService:
                 blog_style=blog_style,
                 language=language,
                 user_notes=user_notes,
-                category=category
+                category=category,
+                provider_override=provider_override,
+                model_override=model_override,
             )
 
             if "error" in blog_data:
@@ -400,7 +428,9 @@ class BlogService:
         self,
         topic: str,
         platforms: List[Dict[str, str]],
-        source_content: str = ""
+        source_content: str = "",
+        provider_override: str = "",
+        model_override: str = "",
     ) -> Dict[str, Any]:
         """[Localized Adaptation] 각 언어별 실정에 맞게 독립적으로 블로그 생성 (단순 번역이 아닌 원본 소스 기반 현지화)"""
         import asyncio
@@ -422,7 +452,9 @@ class BlogService:
                     blog_style=cfg.get("style", "info"),
                     language=lang,
                     user_notes=cfg.get("user_notes", ""),
-                    category=cfg.get("category")
+                    category=cfg.get("category"),
+                    provider_override=provider_override,
+                    model_override=model_override,
                 )
                 res["language"] = lang
                 res["target_id"] = cfg.get("target_id")
@@ -446,19 +478,23 @@ class BlogService:
     async def upload_local_images_to_public(self, content: str) -> str:
         """본문 내 로컬 이미지(/output/)를 WordPress에 업로드하여 공개 URL로 일괄 치환.
         모든 플랫폼에서 재사용 가능한 공개 URL을 반환."""
+        result = await self.promote_local_media_to_public(content)
+        return result.get("content", content)
+
+    async def promote_local_media_to_public(self, content: str) -> dict:
+        """본문 내 로컬 이미지/비디오를 공개 URL로 승격한다.
+        현재 이미지는 WordPress Media로 업로드하고, 비디오는 기존 공개 URL이 없으면 로컬 경로를 유지한다."""
         import re
         import urllib.parse
 
-        # 로컬 이미지 경로 (/output/ 또는 output/) 및 다양한 따옴표 대응
-        img_pattern = re.compile(r'<img [^>]*src=["\']?(/output/[^"\'>]+|output/[^"\'>]+)["\']?[^>]*>')
-        matches = img_pattern.findall(content)
-
-        if not matches:
-            return content
-
-        processed = content
+        processed = content or ""
         uploaded_cache = {}
         failed_paths = []
+        promoted_images = []
+        pending_videos = []
+
+        img_pattern = re.compile(r'<img [^>]*src=["\']?(/output/[^"\'>]+|output/[^"\'>]+)["\']?[^>]*>')
+        matches = img_pattern.findall(processed)
 
         for local_path in matches:
             if local_path in uploaded_cache:
@@ -477,6 +513,7 @@ class BlogService:
                         public_url = upload_res["url"]
                         uploaded_cache[local_path] = public_url
                         processed = processed.replace(local_path, public_url)
+                        promoted_images.append({"local_path": local_path, "public_url": public_url})
                         print(f"[ImageUpload] OK → {public_url}")
                     else:
                         print(f"[ImageUpload] FAIL: {upload_res.get('error')}")
@@ -487,18 +524,37 @@ class BlogService:
             else:
                 failed_paths.append(local_path)
 
-        # 업로드 실패한 이미지 태그 제거 (깨진 아이콘 방지)
+        video_pattern = re.compile(r'(?P<prefix><(?:video|source)[^>]*src=["\']?)(?P<path>/output/[^"\'>]+|output/[^"\'>]+)(?P<suffix>["\']?[^>]*>)', re.IGNORECASE)
+        for match in video_pattern.finditer(content or ""):
+            local_path = match.group("path")
+            decoded_path = urllib.parse.unquote(local_path)
+            if decoded_path.startswith("/output/"):
+                rel_path = decoded_path[8:]
+                abs_path = os.path.join(config.OUTPUT_DIR, rel_path)
+                pending_videos.append({
+                    "local_path": local_path,
+                    "absolute_path": abs_path,
+                    "public_url": "",
+                    "ready": False,
+                    "reason": "공개 비디오 URL 승격 경로가 아직 없어 로컬 경로를 유지합니다.",
+                })
+
         for fp in failed_paths:
             processed = re.sub(
-                r'<div[^>]*>\s*<img[^>]*src="' + re.escape(fp) + r'"[^>]*>\s*</div>',
-                '', processed
+                r'<(?:div|figure|p)[^>]*>\s*<img[^>]*src=["\']?' + re.escape(fp) + r'["\']?[^>]*>.*?</(?:div|figure|p)>',
+                '', processed, flags=re.DOTALL | re.IGNORECASE
             )
             processed = re.sub(
-                r'<img[^>]*src="' + re.escape(fp) + r'"[^>]*>',
-                '', processed
+                r'<img[^>]*src=["\']?' + re.escape(fp) + r'["\']?[^>]*>',
+                '', processed, flags=re.IGNORECASE
             )
 
-        return processed
+        return {
+            "content": processed,
+            "promoted_images": promoted_images,
+            "pending_videos": pending_videos,
+            "failed_images": failed_paths,
+        }
 
     def extract_body_content(self, html_content: str) -> str:
         """HTML 문서에서 body 태그 또는 <html> 태그를 안전하게 걷어내고 본문만 추출 (WordPress 레이아웃 보호)"""
@@ -516,8 +572,195 @@ class BlogService:
         
         # 3. <body>가 없으면 <html>, <head> 등만 단순 제거 (위태로운 div 정규식 제거)
         clean_content = re.sub(r'<!DOCTYPE[^>]*>|<html>|</html>|<head>[\s\S]*?</head>|<body>|</body>', '', html_content, flags=re.IGNORECASE).strip()
-            
+
         return f"{styles}\n{clean_content}"
+
+    def _is_unpublishable_content(self, content: str) -> bool:
+        """게시하면 안 되는 축약/빈 본문 방지."""
+        import re
+
+        raw = (content or "").strip()
+        clean = re.sub(r"<[^>]+>", " ", raw)
+        clean = re.sub(r"&nbsp;|&#160;", " ", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\s+", " ", clean).strip()
+        collapsed = clean.replace(".", "").replace("…", "").strip()
+
+        if not raw or not clean or not collapsed:
+            return True
+        if raw in {"...", "…"} or clean in {"...", "…"}:
+            return True
+        if len(clean) < 600:
+            return True
+        return False
+
+    def _wordpress_readability_wrap(self, html_content: str) -> str:
+        """WordPress 테마/CSS 충돌을 줄이는 안전 래퍼."""
+        processed = self.extract_body_content(html_content)
+        safety_css = """
+<style id="cp-wordpress-readability-fix">
+.cp-post {
+  max-width: 920px !important;
+  margin: 0 auto !important;
+  padding: 28px 18px !important;
+  color: #1f2937 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", Arial, sans-serif !important;
+  font-size: 18px !important;
+  line-height: 1.85 !important;
+  letter-spacing: 0 !important;
+  word-break: keep-all !important;
+  overflow-wrap: anywhere !important;
+  box-sizing: border-box !important;
+}
+.cp-post .container, .cp-post article, .cp-post .content-card {
+  max-width: 860px !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box !important;
+}
+.cp-post p, .cp-post li {
+  font-size: 18px !important;
+  line-height: 1.85 !important;
+  color: #1f2937 !important;
+}
+.cp-post h1, .cp-post h2, .cp-post h3 {
+  color: #111827 !important;
+  letter-spacing: 0 !important;
+  word-break: keep-all !important;
+}
+.cp-post h1 {
+  font-size: clamp(30px, 4vw, 46px) !important;
+  line-height: 1.22 !important;
+  text-align: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+.cp-post h2 {
+  font-size: clamp(24px, 3vw, 32px) !important;
+  line-height: 1.35 !important;
+  margin-top: 2.5rem !important;
+}
+.cp-post .hero, .cp-post header {
+  text-align: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  transform: none !important;
+}
+.cp-post img {
+  max-width: 100% !important;
+  height: auto !important;
+}
+</style>
+"""
+        return f'<div class="cp-post">\n{processed}\n</div>\n{safety_css}'
+
+    def _blogger_base_readability_css(self, rtl: bool = False) -> str:
+        direction = "rtl" if rtl else "ltr"
+        text_align = "right" if rtl else "left"
+        return f"""
+/* Blogger final readability lock */
+.bp-wrap {{
+  display: block !important;
+  width: 100% !important;
+  max-width: 900px !important;
+  margin: 0 auto !important;
+  padding: 28px 18px !important;
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", "Noto Sans KR", "Noto Naskh Arabic", Arial, sans-serif !important;
+  font-size: 18px !important;
+  line-height: 1.85 !important;
+  letter-spacing: 0 !important;
+  direction: {direction} !important;
+  text-align: {text_align} !important;
+  word-break: keep-all !important;
+  overflow-wrap: anywhere !important;
+  box-sizing: border-box !important;
+}}
+.bp-wrap *, .bp-wrap *::before, .bp-wrap *::after {{
+  box-sizing: border-box !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  animation: none !important;
+  transition: none !important;
+}}
+.bp-wrap .container, .bp-wrap article, .bp-wrap section, .bp-wrap .content-card, .bp-wrap .hero, .bp-wrap header {{
+  max-width: 860px !important;
+  width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border-color: #e5e7eb !important;
+}}
+.bp-wrap p, .bp-wrap li, .bp-wrap span, .bp-wrap div {{
+  color: #1f2937 !important;
+  font-size: 18px !important;
+  line-height: 1.85 !important;
+}}
+.bp-wrap h1, .bp-wrap h2, .bp-wrap h3, .bp-wrap h4, .bp-wrap h5, .bp-wrap h6, .bp-wrap strong, .bp-wrap b {{
+  color: #111827 !important;
+  letter-spacing: 0 !important;
+}}
+.bp-wrap h1 {{
+  font-size: clamp(30px, 4vw, 46px) !important;
+  line-height: 1.22 !important;
+  text-align: center !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}}
+.bp-wrap h2 {{
+  font-size: clamp(24px, 3vw, 32px) !important;
+  line-height: 1.35 !important;
+  margin-top: 2.4rem !important;
+}}
+.bp-wrap .hero, .bp-wrap header {{
+  text-align: center !important;
+  padding: 48px 18px 36px !important;
+}}
+.bp-wrap .hero p, .bp-wrap header p {{
+  text-align: center !important;
+  color: #4b5563 !important;
+}}
+.bp-wrap .badge, .bp-wrap [class*="badge"], .bp-wrap [class*="tag"], .bp-wrap [class*="chip"], .bp-wrap [class*="pill"] {{
+  display: inline-block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-radius: 999px !important;
+}}
+.bp-wrap img {{
+  display: block !important;
+  max-width: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 2rem auto !important;
+}}
+"""
+
+    def _wrap_blogger_fragment(self, content: str, summary: str = None, image_tags: List[str] = None) -> str:
+        import re
+
+        body_to_inject = re.sub(r'<script[\s\S]*?</script>', '', content or '', flags=re.IGNORECASE)
+        body_to_inject = re.sub(r'opacity\s*:\s*0\s*;?', '', body_to_inject)
+        body_to_inject = re.sub(r'visibility\s*:\s*hidden\s*;?', '', body_to_inject)
+        rtl = bool(re.search(r'[\u0600-\u06FF]', body_to_inject))
+        if image_tags:
+            body_to_inject = self.inject_images_into_content(body_to_inject, image_tags)
+
+        thumbnail_html = ""
+        if summary:
+            thumbnail_html += f'<div style="display:none; overflow:hidden; width:0; height:0; max-height:0; max-width:0; opacity:0;">{summary}</div>\n'
+
+        return "\n".join([
+            '<div class="bp-wrap">',
+            thumbnail_html,
+            body_to_inject,
+            "</div>",
+            f"<style>{self._blogger_base_readability_css(rtl=rtl)}</style>",
+        ])
 
     async def post_to_wordpress(
         self,
@@ -558,9 +801,12 @@ class BlogService:
 
             # 1. 이미지 및 리소스 업로드 (로컬 경로 /output/ 이미지를 공개 URL로 치환)
             content = await self.upload_local_images_to_public(content)
+
+            if self._is_unpublishable_content(content):
+                return {"status": "error", "error": "본문이 너무 짧거나 축약되어 게시를 중단했습니다. 다시 생성해 주세요."}
             
             # [FIX] 워드프레스 레이아웃 깨짐 방지: <html>, <body> 태그 등이 있으면 본문만 추출
-            processed_content = self.extract_body_content(content)
+            processed_content = self._wordpress_readability_wrap(content)
 
             # 2. 카테고리/태그 메타데이터 생성 (SEO 및 정보 제공용)
             meta_footer = ""
@@ -615,7 +861,7 @@ class BlogService:
                     except:
                         full_error = f"워드프레스 응답 오류({res.status_code}): {res.text[:200]}"
                     
-                    return {"status": "error", "error": full_error}
+                    return {"status": "error", "error": full_error, "status_code": res.status_code}
 
 
         except Exception as e:
@@ -700,9 +946,9 @@ class BlogService:
         - summary를 본문의 맨 앞에 보이지 않게 삽입 (SEO용)"""
         import re
         
-        # 전체 HTML 문서가 아니면 그대로 반환
+        # 전체 HTML 문서가 아니어도 Blogger 테마 충돌 방지를 위해 안전 래퍼를 적용한다.
         if not re.search(r'<html|<!DOCTYPE', content, re.IGNORECASE):
-            return content
+            return self._wrap_blogger_fragment(content, summary=summary, image_tags=image_tags)
         
         print("[Blogger Prep] Full HTML document detected, processing...")
         
@@ -893,6 +1139,9 @@ class BlogService:
   box-shadow: 0 10px 40px rgba(0,0,0,0.05) !important;
 }
 """
+        force_visible += self._blogger_base_readability_css(
+            rtl=bool(re.search(r'[\u0600-\u06FF]', body_content))
+        )
         scoped_css += force_visible
         
         # 7. 최종 조립
@@ -905,11 +1154,32 @@ class BlogService:
         # 7. 본문 래퍼 시작
         result_parts.append('<div class="bp-wrap">')
         
-        # 8. 요약문(summary) 삽입 (SEO 최적화 및 레이아웃 구조 보호)
-        # 중요: 스타일 태그 뒤, 본문 래퍼 내부의 맨 앞에 배치하여 스타일이 무시되지 않도록 함
+        # 8. 요약문(summary) 및 대표 이미지(Thumbnail) 삽입
+        # Blogger는 포스트의 가장 첫 번째 이미지를 썸네일로 사용하므로, 맨 앞에 히든으로 배치하여 썸네일 확보
+        thumbnail_html = ""
         if summary:
-            summary_html = f'<div style="display:none; overflow:hidden; width:0; height:0; max-height:0; max-width:0; opacity:0;">{summary}</div>\n'
-            result_parts.append(summary_html)
+            thumbnail_html += f'<div style="display:none; overflow:hidden; width:0; height:0; max-height:0; max-width:0; opacity:0;">{summary}</div>\n'
+        
+        # 대표 이미지 추출 시도 (본문 또는 image_tags에서)
+        first_img_url = None
+        all_imgs = re.findall(r'<img [^>]*src="([^"]+)"', body_content)
+        if all_imgs:
+            first_img_url = all_imgs[0]
+        elif image_tags:
+            import re as re_img
+            for tag in image_tags:
+                m = re_img.search(r'src="([^"]+)"', tag)
+                if m:
+                    first_img_url = m.group(1)
+                    break
+        
+        if first_img_url:
+            # Blogger 썸네일 전용 히든 이미지 (최상단 배치)
+            thumbnail_html += f'<div style="display:none;"><img src="{first_img_url}" alt="thumbnail" /></div>\n'
+            print(f"[Blogger Prep] Thumbnail injected for post list: {first_img_url}")
+            
+        if thumbnail_html:
+            result_parts.append(thumbnail_html)
             
         body_to_inject = body_content
         # 8.5 이미지 사후 주입 (이미지 유실 방지 최종 단계)
@@ -983,6 +1253,9 @@ class BlogService:
 
             # 1. 이미지 및 리소스 업로드 (Blogger는 로컬 경로를 인식할 수 없으므로 WP 미디어 라이브러리로 업로드 후 URL 치환)
             content = await self.upload_local_images_to_public(content)
+
+            if self._is_unpublishable_content(content):
+                return {"status": "error", "error": "본문이 너무 짧거나 축약되어 Blogger 게시를 중단했습니다. 다시 생성해 주세요."}
 
             # 2. Blogger용 HTML 전처리 및 게시글 준비 (이미지 누락 방지를 위해 image_tags 전달)
             content = self.prepare_html_for_blogger(content, summary=summary, image_tags=kwargs.get("image_tags"))
@@ -1149,9 +1422,18 @@ class BlogService:
         # ── 2단계: 제목 번역 ──
         new_title = title
         if title and title.strip():
-            title_prompt = f"Translate the following blog title into {target_name}. Detect the source language and translate to {target_name}. Output ONLY the translated text.\n\nTitle: {title}"
+            hooking_strategy = gemini.get_hooking_strategy(target_language)
+            title_prompt = f"""
+            Translate the following blog title into {target_name}. 
+            Detect the source language and translate to {target_name}. 
+            CRITICAL: Apply the following hooking strategy to make it more engaging for the target audience: {hooking_strategy}. 
+            Do NOT just translate literally; make it a high-CTR title for the {target_name} region.
+            Output ONLY the translated/hooked title text.
+
+            Title: {title}
+            """
             try:
-                translated_title = await gemini.generate_text(title_prompt, temperature=0.1, max_tokens=256)
+                translated_title = await gemini.generate_text(title_prompt, temperature=0.3, max_tokens=256)
                 translated_title = translated_title.strip().strip('"').strip("'")
                 
                 # 불필요한 노이즈 제거 로직 강화
@@ -1389,15 +1671,13 @@ HTML TO TRANSLATE:
         result = await gemini.generate_text(prompt, temperature=0.7)
         return result.strip()
 
-    async def analyze_metadata(self, content: str) -> Dict[str, Any]:
+    async def analyze_metadata(self, content: str, language: str = "ko") -> Dict[str, Any]:
         """블로그 본문 분석하여 메태데이터 추출"""
         from services.gemini_service import gemini_service
-        res = await gemini_service.analyze_blog_metadata(content)
+        res = await gemini_service.analyze_blog_metadata(content, language=language)
         if isinstance(res, dict):
             res["status"] = "ok"
         return res
 
 
 blog_service = BlogService()
-
-
