@@ -110,15 +110,53 @@ class GeminiService:
         provider_override: str = "",
         model_override: str = "",
     ) -> str:
-        """텍스트 생성"""
-        provider = str(provider_override or self.selected_provider or "gemini").strip().lower()
+        """텍스트 생성 - 모든 설정된 provider의 키가 없으면 자동 최대 프로바이더 포랫백을 시도합니다."""
+        # provider_override가 지정된 경우 해당 provider만 사용, 실패시 모든 가능한 provider를 순서 시도
+        if provider_override:
+            provider = provider_override.strip().lower()
+        else:
+            provider = str(self.selected_provider or "gemini").strip().lower()
+
         if provider not in ("gemini", "openai", "anthropic"):
             provider = "gemini"
-        api_key = self._text_api_key(provider)
-        if not api_key:
-            if not provider_override and provider != "gemini" and self._text_api_key("gemini"):
-                print(f"[GeminiService] {self._provider_label(provider)} key is missing; falling back to Gemini.")
-                return await self._generate_text_gemini(prompt, temperature, max_tokens, use_web_search, model_override)
+
+        # 지정된 provider가 가능하며 provider_override가 없으면 바로 사용
+        if self._text_api_key(provider):
+            try:
+                result = await self._call_provider(provider, prompt, temperature, max_tokens, use_web_search, model_override)
+                return result
+            except Exception as e:
+                if provider_override:
+                    raise  # caller가 확정지정했으며 실패하면 그대로 전파4
+                print(f"[GeminiService] {self._provider_label(provider)} failed: {e}. Trying fallback providers...")
+        else:
+            if provider_override:
+                label = self._provider_label(provider)
+                raise Exception(f"{label} API 키가 설정되지 않았습니다.")
+            print(f"[GeminiService] {self._provider_label(provider)} key not set. Trying fallback providers...")
+
+        # 프로바이더 포랫백 체인: 지정된 provider 보다 다른 가능한 provider를 순서 시도
+        fallback_order = [p for p in ["gemini", "openai", "anthropic"] if p != provider]
+        for fb_provider in fallback_order:
+            if self._text_api_key(fb_provider):
+                try:
+                    print(f"[GeminiService] Falling back to {self._provider_label(fb_provider)}...")
+                    result = await self._call_provider(fb_provider, prompt, temperature, max_tokens, use_web_search, model_override)
+                    return result
+                except Exception as e:
+                    print(f"[GeminiService] {self._provider_label(fb_provider)} also failed: {e}")
+                    continue
+
+        # 모든 provider 실패
+        raise Exception(f"모든 AI provider(Gemini/OpenAI/Anthropic)의 API 키가 없으나 없습니다. 설정 > 글쓰기 AI에서 최소 1개의 API 키를 설정하세요.")
+
+    async def _call_provider(self, provider: str, prompt: str, temperature: float, max_tokens: int, use_web_search: bool, model_override: str) -> str:
+        """provider를 선택하여 텍스트를 생성합니다."""
+        if provider == "openai":
+            return await self._generate_text_openai(prompt, temperature, max_tokens, use_web_search, model_override)
+        if provider == "anthropic":
+            return await self._generate_text_anthropic(prompt, temperature, max_tokens, model_override)
+        return await self._generate_text_gemini(prompt, temperature, max_tokens, use_web_search, model_override)
             label = self._provider_label(provider)
             raise Exception(f"{label} API 키가 설정되지 않았습니다. 설정 > 글쓰기 AI에서 API 키를 저장하거나 제공자를 Gemini로 변경하세요.")
 
@@ -635,7 +673,7 @@ class GeminiService:
         )
         
         try:
-            text = await self.generate_text(prompt, temperature=0.9)
+            text = await self.generate_text(prompt, temperature=0.9, provider_override=provider_override, model_override=model_override)
             
             import json
             import re
@@ -740,7 +778,7 @@ class GeminiService:
             print(f"Trend Gen Error: {e}")
             return []
 
-    async def generate_general_blog_trends(self, category: str = "General") -> List[dict]:
+    async def generate_general_blog_trends(self, category: str = "General", provider_override: str = "", model_override: str = "") -> list:
         """일반 블로그(독립적 자동화) 카테고리별 트렌드 키워드 생성"""
         from config import config
         current_date = config.get_kst_time().strftime("%Y-%m-%d")

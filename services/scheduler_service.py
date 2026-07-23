@@ -169,7 +169,9 @@ class SchedulerService:
             category = db.get_global_setting("auto_post_category") or "IT, Tech, Trends"
 
             print(f"[AutoPost] Fetching topic for category: {category}")
-            trends = await gemini_service.generate_general_blog_trends(category)
+            provider = db.get_global_setting("ai_text_provider") or "gemini"
+            model = db.get_global_setting("ai_text_model") or ""
+            trends = await gemini_service.generate_general_blog_trends(category, provider_override=provider, model_override=model)
             if not trends:
                 raise Exception("Failed to fetch trending topic.")
 
