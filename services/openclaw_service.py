@@ -1,13 +1,21 @@
 ﻿import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
+
+_KST = timezone(timedelta(hours=9))
+
+
+def _kst_now() -> datetime:
+    """현재 KST 시간 반환."""
+    return datetime.now(_KST)
+
 
 import database as db
 from services.ai_quality_service import ai_quality_service
 from services.blog_service import blog_service
 from services.gemini_service import gemini_service
-from app.routers.blog import BlogPostRequest, post_blog
+from services.publish_workflow_service import BlogPostRequest, publish_workflow_service
 
 
 class OpenClawService:
@@ -86,7 +94,7 @@ class OpenClawService:
             run_id,
             status="running",
             current_stage="topic",
-            started_at=datetime.utcnow().isoformat(timespec="seconds"),
+            started_at=_kst_now().isoformat(timespec="seconds"),
         )
 
         try:
@@ -100,7 +108,7 @@ class OpenClawService:
                     status="failed",
                     current_stage="draft",
                     error_message=generation_result.get("error", "variant generation failed"),
-                    completed_at=datetime.utcnow().isoformat(timespec="seconds"),
+                    completed_at=_kst_now().isoformat(timespec="seconds"),
                 )
                 return generation_result
 
@@ -131,7 +139,7 @@ class OpenClawService:
                 current_stage="completed",
                 approval_required=0,
                 summary_json=publish_result,
-                completed_at=datetime.utcnow().isoformat(timespec="seconds"),
+                completed_at=_kst_now().isoformat(timespec="seconds"),
             )
             return {
                 "status": "ok",
@@ -147,7 +155,7 @@ class OpenClawService:
                 status="failed",
                 current_stage="error",
                 error_message=str(e),
-                completed_at=datetime.utcnow().isoformat(timespec="seconds"),
+                completed_at=_kst_now().isoformat(timespec="seconds"),
             )
             return {"status": "error", "run_id": run_id, "error": str(e)}
 
@@ -173,7 +181,7 @@ class OpenClawService:
 
         prompt = f"""
 You are a senior SEO strategist for blog automation.
-Current date: {datetime.utcnow().date().isoformat()}
+Current date: {_kst_now().date().isoformat()}
 Category: {category}
 Target language: {language}
 Topic mode: {topic_mode}
@@ -241,10 +249,26 @@ Example format:
             return result
 
         variants = []
+        no_human = db.get_global_setting("auto_post_no_human") != "false"
         for item in result.get("results", []):
             target_id = item.get("target_id") or item.get("platform") or "wordpress"
             platform = next((p["platform"] for p in platforms if p["target_id"] == target_id), item.get("platform", "wordpress"))
             language = item.get("language") or next((p["language"] for p in platforms if p["target_id"] == target_id), campaign.get("default_language", "ko"))
+            lang_content = item.get("content", "")
+            images = []
+            if item.get("status") == "ok" and lang_content:
+                try:
+                    img_res = await blog_service.add_images_to_content(
+                        content=lang_content,
+                        project_id=None,
+                        image_count=2,
+                        no_human=no_human,
+                    )
+                    if img_res.get("status") == "ok" and img_res.get("content"):
+                        lang_content = img_res["content"]
+                        images = img_res.get("images", []) or []
+                except Exception as img_err:
+                    print(f"[OpenClaw] Image generation error for {target_id}: {img_err}")
             variant_id = db.create_content_variant(
                 run_id=run_id,
                 target_id=target_id,
@@ -253,8 +277,8 @@ Example format:
                 title=item.get("title", ""),
                 summary=item.get("summary", ""),
                 tags_json=item.get("tags", []),
-                content_html=item.get("content", ""),
-                images_json=[],
+                content_html=lang_content,
+                images_json=images,
                 publish_status="draft" if item.get("status") == "ok" else "failed",
                 quality_report_json={"generation_status": item.get("status"), "generation_error": item.get("error", "")},
             )
@@ -342,6 +366,14 @@ Example format:
         if not approved:
             return {"status": "failed", "error": "no approved variants to publish"}
 
+        # 캠페인 카테고리 조회
+        campaign_category = ""
+        run_data = db.get_openclaw_run(run_id)
+        if run_data:
+            campaign = db.get_openclaw_campaign(run_data.get("campaign_id"))
+            if campaign:
+                campaign_category = campaign.get("category", "")
+
         primary = approved[0]
         contents = {}
         metadata = {}
@@ -357,7 +389,7 @@ Example format:
                 "title": variant.get("title", ""),
                 "tags": variant.get("tags_json", []) or [],
                 "summary": variant.get("summary", ""),
-                "category": "",
+                "category": campaign_category,
             }
             platform_langs[target_id] = variant.get("language", "ko")
             publish_task_ids[target_id] = db.create_openclaw_task(
@@ -372,14 +404,14 @@ Example format:
             title=primary.get("title", ""),
             content=primary.get("content_html", ""),
             tags=primary.get("tags_json", []) or [],
-            categories=[],
+            categories=[campaign_category] if campaign_category else [],
             summary=primary.get("summary", ""),
             platforms=platforms,
             platform_langs=platform_langs,
             contents=contents,
             metadata=metadata,
         )
-        result = await post_blog(req)
+        result = await publish_workflow_service.publish_blog_post(req)
         results_map = result.get("results", {}) or {}
 
         for variant in approved:
@@ -427,7 +459,7 @@ Example format:
             status="approved",
             reviewer=reviewer,
             review_note=note,
-            approved_at=datetime.utcnow().isoformat(timespec="seconds"),
+            approved_at=_kst_now().isoformat(timespec="seconds"),
         )
         db.update_content_variant(matched["id"], publish_status="approved")
 
@@ -442,7 +474,7 @@ Example format:
             current_stage="completed",
             approval_required=0,
             summary_json=publish_result,
-            completed_at=datetime.utcnow().isoformat(timespec="seconds"),
+            completed_at=_kst_now().isoformat(timespec="seconds"),
         )
         return {"status": "ok", "run_id": approval["run_id"], "published": True, "summary": publish_result}
 
@@ -480,7 +512,7 @@ Example format:
                 current_stage="completed",
                 approval_required=0,
                 summary_json=publish_result,
-                completed_at=datetime.utcnow().isoformat(timespec="seconds"),
+                completed_at=_kst_now().isoformat(timespec="seconds"),
             )
             return {"status": "ok", "run_id": run_id, "mode": "republish", "summary": publish_result}
 
@@ -535,10 +567,9 @@ Example format:
                 status="failed",
                 current_stage="approval",
                 error_message="all approval items were processed without publish",
-                completed_at=datetime.utcnow().isoformat(timespec="seconds"),
+                completed_at=_kst_now().isoformat(timespec="seconds"),
             )
         return {"status": "ok", "run_id": approval["run_id"], "pending_count": len(run_pending)}
 
 
 openclaw_service = OpenClawService()
-

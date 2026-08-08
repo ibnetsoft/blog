@@ -4,12 +4,12 @@ import traceback
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from app.routers.blog import BlogPostRequest, post_blog
 from config import config
 import database as db
 from services.blog_service import blog_service
 from services.gemini_service import gemini_service
 from services.openclaw_service import openclaw_service
+from services.publish_workflow_service import BlogPostRequest, publish_workflow_service
 
 
 class SchedulerService:
@@ -100,9 +100,13 @@ class SchedulerService:
 
                 # [보호 2] DB에 running/waiting_approval 상태의 run이 있으면 스킵
                 active_runs = db.get_openclaw_runs(limit=1, campaign_id=campaign_id)
+                _skip = False
                 for r in active_runs:
                     if r.get("status") in ("running", "waiting_approval", "queued"):
-                        continue
+                        _skip = True
+                        break
+                if _skip:
+                    continue
 
                 if (campaign.get("schedule_type") or "daily") != "daily":
                     continue
@@ -160,13 +164,12 @@ class SchedulerService:
 
         if target_minutes >= 0 and current_minutes >= target_minutes and last_run != today_str:
             print(f"[Scheduler] Legacy auto-post due at {current_time_str}")
-            db.save_global_setting("auto_post_last_run", today_str)
             asyncio.create_task(self._execute_auto_post())
 
     async def _execute_auto_post(self):
         try:
             print("[AutoPost] Starting legacy daily execution")
-            category = db.get_global_setting("auto_post_category") or "IT, Tech, Trends"
+            category = db.get_global_setting("auto_post_category") or "FX 외환거래"
 
             print(f"[AutoPost] Fetching topic for category: {category}")
             provider = db.get_global_setting("ai_text_provider") or "gemini"
@@ -266,7 +269,7 @@ class SchedulerService:
                 social_assets=social_assets,
             )
 
-            post_res = await post_blog(post_req)
+            post_res = await publish_workflow_service.publish_blog_post(post_req)
             results_map = post_res.get("results", {}) or {}
             ok_platforms = [name for name, res in results_map.items() if isinstance(res, dict) and res.get("status") == "ok"]
             failed_platforms = [name for name, res in results_map.items() if isinstance(res, dict) and res.get("status") != "ok"]
@@ -286,6 +289,7 @@ class SchedulerService:
             }
 
             if post_res.get("status") in ["ok", "partial"]:
+                db.save_global_setting("auto_post_last_run", datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d"))
                 summary_text = f"Auto-posted: {topic} | success {len(ok_platforms)} / failed {len(failed_platforms)}"
                 if failed_platforms:
                     summary_text += f" | failed platforms: {', '.join(failed_platforms)}"

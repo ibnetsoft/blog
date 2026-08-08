@@ -1,14 +1,113 @@
-# 🤖 OpenClaw & Discord Blog Automation System
+# Blog App
 
-Human-in-the-Loop 구조를 적용한 에이전트 기반 블로그 자동화 파이프라인입니다. 
-OpenClaw 에이전트가 생성한 초안을 디스코드 인터페이스를 통해 사용자가 검토 및 승인/반려할 수 있습니다.
+FastAPI-based blog automation system for:
 
-## 📁 폴더 구조
-- `/core`: 기존 블로그 API 및 콘텐츠 생성 엔진 (보존 구역)
-- `/openclaw_tools`: 에이전트 호출용 래퍼 레이어 (`blog_tools.py`)
-- `discord_bot.py`: FastAPI 내장형 디스코드 양방향 봇 메인 엔진
+- AI-assisted draft generation
+- Multi-platform publishing
+- OpenClaw campaign scheduling and approvals
+- Session-based image/media publishing workflows
 
-## 🚀 시작 가이드
-1. 의존성 설치: `pip install -r requirements.txt`
-2. 환경 변수 세팅: `.env` 파일에 토큰 및 채널 ID 입력
-3. 시스템 구동: `python discord_bot.py`
+## Main Features
+
+- Generate posts from:
+  - direct topic input
+  - URLs
+  - YouTube transcripts or metadata
+  - uploaded PDF, TXT, and Markdown files
+- Publish to:
+  - WordPress
+  - Blogger
+  - Facebook
+  - Instagram
+  - TikTok
+  - Telegram
+- Run recurring campaigns with:
+  - scheduled execution
+  - AI quality review
+  - approval queue
+  - retry support
+
+## Project Layout
+
+```text
+app/
+  routers/                FastAPI route handlers
+services/                 Business logic and external integrations
+templates/pages/          Server-rendered UI pages
+static/                   JS, CSS, fonts, and images
+tests/                    Automated regression tests
+config.py                 Runtime config loading
+database.py               SQLite schema and CRUD helpers
+main.py                   App entry point
+blog_app.db               Local SQLite database
+```
+
+## Main Screens
+
+- `/blog-independent`
+  - topic-driven generation workspace
+- `/settings`
+  - API keys, provider settings, automation settings
+- `/publish-hub`
+  - publish session and media workflow
+- `/openclaw-dashboard`
+  - campaign, run, and approval monitoring
+- `/logs`
+  - operation logs
+
+## Run Locally
+
+1. Install dependencies
+
+```powershell
+pip install -r requirements.txt
+```
+
+2. Configure environment
+
+- Copy `.env.example` to `.env` if needed
+- Fill in the API keys and publishing credentials you plan to use
+
+3. Start the app
+
+```powershell
+python main.py
+```
+
+Default local address:
+
+- `http://127.0.0.1:8000`
+
+## Core API Groups
+
+- Settings and health
+  - `/api/settings/*`
+  - `/api/health`
+- Blog generation and publish
+  - `/api/blog/*`
+- Publish Hub session flow
+  - `/api/publish/*`
+- OpenClaw automation
+  - `/api/openclaw/*`
+
+See [ARCHITECTURE_REVIEW_2026-08-08.md](D:/Projects/BLOG/blog_app/ARCHITECTURE_REVIEW_2026-08-08.md) for the fuller architecture, runtime flow, and risk review.
+
+## Tests
+
+Run the current regression suite with the standard library test runner:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Current coverage focuses on deterministic core logic:
+
+- publish HTML assembly
+- publish payload and HTML validation
+- scheduler time/date calculations
+
+## Notes
+
+- The app stores mutable runtime settings in SQLite and also uses `.env` for bootstrap configuration.
+- The server starts an in-process scheduler on FastAPI startup.
+- Output assets are exposed through `/output`.
