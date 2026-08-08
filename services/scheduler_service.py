@@ -6,10 +6,8 @@ from zoneinfo import ZoneInfo
 
 from config import config
 import database as db
-from services.blog_service import blog_service
-from services.gemini_service import gemini_service
+from services.hermes_service import hermes_service
 from services.openclaw_service import openclaw_service
-from services.publish_workflow_service import BlogPostRequest, publish_workflow_service
 
 
 class SchedulerService:
@@ -171,15 +169,8 @@ class SchedulerService:
             print("[AutoPost] Starting legacy daily execution")
             category = db.get_global_setting("auto_post_category") or "FX 외환거래"
 
-            print(f"[AutoPost] Fetching topic for category: {category}")
             provider = db.get_global_setting("ai_text_provider") or "gemini"
             model = db.get_global_setting("ai_text_model") or ""
-            trends = await gemini_service.generate_general_blog_trends(category, provider_override=provider, model_override=model)
-            if not trends:
-                raise Exception("Failed to fetch trending topic.")
-
-            topic = trends[0].get("title", "")
-            print(f"[AutoPost] Selected topic: {topic}")
 
             platforms_json = db.get_global_setting("auto_post_platforms")
             if not platforms_json:
@@ -195,81 +186,19 @@ class SchedulerService:
                 print("[AutoPost] Target platform list is empty.")
                 return
 
-            print(f"[AutoPost] Generating localized blogs for {len(platforms)} platforms")
-            res_multi = await blog_service.generate_independent_multi_language_blogs(
-                topic=topic,
-                platforms=platforms,
-                source_content="",
-            )
-            if res_multi.get("status") != "ok":
-                raise Exception(f"Failed to generate blogs: {res_multi.get('error')}")
-
-            results = res_multi.get("results", [])
-            req_contents = {}
-            req_metadata = {}
-            platform_langs = {}
-            post_platforms = []
-            social_assets = {}
             no_human = db.get_global_setting("auto_post_no_human") != "false"
-
-            for item in results:
-                if item.get("status") != "ok":
-                    continue
-
-                lang_content = item.get("content", "")
-                target_id = item.get("target_id")
-                lang = item.get("language", "ko")
-                if not lang_content:
-                    continue
-
-                try:
-                    img_res = await blog_service.add_images_to_content(
-                        content=lang_content,
-                        project_id=None,
-                        image_count=2,
-                        no_human=no_human,
-                    )
-                    req_contents[target_id] = img_res.get("content") if img_res.get("status") == "ok" and img_res.get("content") else lang_content
-                except Exception as img_err:
-                    print(f"[AutoPost] Image generation error for {target_id}: {img_err}")
-                    req_contents[target_id] = lang_content
-
-                req_metadata[target_id] = {
-                    "title": item.get("title", ""),
-                    "tags": item.get("tags", []),
-                    "category": category,
-                    "summary": item.get("summary", ""),
-                }
-                if item.get("platform") in ["facebook", "instagram", "tiktok", "telegram"]:
-                    social_assets[target_id] = {
-                        "caption": "\n\n".join(filter(None, [item.get("title", ""), item.get("summary", "")])),
-                        "image_urls": [],
-                        "video_urls": [],
-                    }
-                platform_langs[target_id] = lang
-                post_platforms.append(target_id)
-
-            if not req_contents:
-                raise Exception("No generated content succeeded.")
-
-            primary_target = "wordpress" if "wordpress" in req_contents else list(req_contents.keys())[0]
-            primary_content = req_contents[primary_target]
-            primary_meta = req_metadata[primary_target]
-
-            post_req = BlogPostRequest(
-                title=primary_meta["title"],
-                content=primary_content,
-                tags=primary_meta["tags"],
-                categories=[category],
-                summary=primary_meta["summary"],
-                platforms=post_platforms,
-                platform_langs=platform_langs,
-                contents=req_contents,
-                metadata=req_metadata,
-                social_assets=social_assets,
+            hermes_result = await hermes_service.run_legacy_autopost(
+                category=category,
+                platforms=platforms,
+                provider=provider,
+                model=model,
+                no_human=no_human,
             )
+            if hermes_result.get("status") == "error" and not hermes_result.get("publish_result"):
+                raise Exception(hermes_result.get("error") or "Legacy autopost failed")
 
-            post_res = await publish_workflow_service.publish_blog_post(post_req)
+            topic = hermes_result.get("topic", "")
+            post_res = hermes_result.get("publish_result", {})
             results_map = post_res.get("results", {}) or {}
             ok_platforms = [name for name, res in results_map.items() if isinstance(res, dict) and res.get("status") == "ok"]
             failed_platforms = [name for name, res in results_map.items() if isinstance(res, dict) and res.get("status") != "ok"]

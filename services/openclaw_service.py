@@ -14,8 +14,8 @@ def _kst_now() -> datetime:
 import database as db
 from services.ai_quality_service import ai_quality_service
 from services.blog_service import blog_service
-from services.gemini_service import gemini_service
-from services.publish_workflow_service import BlogPostRequest, publish_workflow_service
+from services.hermes_service import hermes_service
+from services.publish_workflow_service import BlogPostRequest
 
 
 class OpenClawService:
@@ -199,15 +199,16 @@ Example format:
 """
 
         try:
-            raw = await gemini_service.generate_text(
-                prompt,
-                temperature=0.85,
-                max_tokens=900,
-                provider_override=provider,
-                model_override=model,
+            topic_bundle = await hermes_service.generate_topic_bundle(
+                category=category,
+                language=language,
+                provider=provider,
+                model=model,
+                topic_mode=topic_mode,
             )
-            candidates = self._extract_json_array(raw)
-            topic = self._select_topic_from_candidates(candidates, category)
+            raw = topic_bundle.get("raw", "")
+            candidates = topic_bundle.get("candidates", [])
+            topic = topic_bundle.get("topic") or self._select_topic_from_candidates(candidates, category)
             db.update_openclaw_task(
                 task_id,
                 status="completed",
@@ -411,7 +412,7 @@ Example format:
             contents=contents,
             metadata=metadata,
         )
-        result = await publish_workflow_service.publish_blog_post(req)
+        result = await hermes_service.publish_blog_post(req)
         results_map = result.get("results", {}) or {}
 
         for variant in approved:

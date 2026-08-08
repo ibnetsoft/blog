@@ -35,8 +35,7 @@ class GeminiService:
 
     @property
     def selected_provider(self) -> str:
-        provider = str(getattr(config, "AI_TEXT_PROVIDER", "gemini") or "gemini").strip().lower()
-        return provider if provider in ("gemini", "openai", "anthropic") else "gemini"
+        return str(getattr(config, "AI_TEXT_PROVIDER", "gemini") or "gemini").strip().lower()
 
     @property
     def selected_model(self) -> str:
@@ -79,6 +78,8 @@ class GeminiService:
             return getattr(config, "OPENAI_API_KEY", "")
         if provider == "anthropic":
             return getattr(config, "ANTHROPIC_API_KEY", "")
+        if provider not in ("gemini", "openai", "anthropic"):
+            return self._get_custom_api_key(provider)
         return getattr(config, "GEMINI_API_KEY", "")
 
     @staticmethod
@@ -117,13 +118,24 @@ class GeminiService:
         else:
             provider = str(self.selected_provider or "gemini").strip().lower()
 
+        custom_info = None
         if provider not in ("gemini", "openai", "anthropic"):
-            provider = "gemini"
+            custom_info = self._get_custom_provider(provider)
+            if not custom_info and not provider_override:
+                provider = "gemini"
 
         # 지정된 provider가 가능하며 provider_override가 없으면 바로 사용
         if self._text_api_key(provider):
             try:
-                result = await self._call_provider(provider, prompt, temperature, max_tokens, use_web_search, model_override)
+                result = await self._call_provider(
+                    provider,
+                    prompt,
+                    temperature,
+                    max_tokens,
+                    use_web_search,
+                    model_override,
+                    custom_info=custom_info,
+                )
                 return result
             except Exception as e:
                 if provider_override:
@@ -136,12 +148,22 @@ class GeminiService:
             print(f"[GeminiService] {self._provider_label(provider)} key not set. Trying fallback providers...")
 
         # 프로바이더 포랫백 체인: 지정된 provider 보다 다른 가능한 provider를 순서 시도
-        fallback_order = [p for p in ["gemini", "openai", "anthropic"] if p != provider]
-        for fb_provider in fallback_order:
+        fallback_order = [p for p in self._get_provider_priority_list() if p.get("name", "").lower() != provider]
+        for fb in fallback_order:
+            fb_provider = str(fb.get("name") or "").strip().lower()
+            fb_custom_info = None if fb.get("is_builtin") else fb
             if self._text_api_key(fb_provider):
                 try:
                     print(f"[GeminiService] Falling back to {self._provider_label(fb_provider)}...")
-                    result = await self._call_provider(fb_provider, prompt, temperature, max_tokens, use_web_search, model_override)
+                    result = await self._call_provider(
+                        fb_provider,
+                        prompt,
+                        temperature,
+                        max_tokens,
+                        use_web_search,
+                        model_override or str(fb.get("default_model") or ""),
+                        custom_info=fb_custom_info,
+                    )
                     return result
                 except Exception as e:
                     print(f"[GeminiService] {self._provider_label(fb_provider)} also failed: {e}")
@@ -150,29 +172,99 @@ class GeminiService:
         # 모든 provider 실패
         raise Exception(f"모든 AI provider(Gemini/OpenAI/Anthropic)의 API 키가 없으나 없습니다. 설정 > 글쓰기 AI에서 최소 1개의 API 키를 설정하세요.")
 
-    async def _call_provider(self, provider: str, prompt: str, temperature: float, max_tokens: int, use_web_search: bool, model_override: str) -> str:
+
+    def _get_custom_provider(self, name: str):
+        """DB에서 커스텀 provider 정보를 조회"""
+        try:
+            providers = db.get_ai_providers(active_only=True)
+            for p in providers:
+                if p["name"].lower() == name.lower():
+                    return p
+        except Exception:
+            pass
+        return None
+
+    def _get_provider_priority_list(self) -> list:
+        """우선순위 순서대로 모든 사용 가능한 provider 목록 반환
+        내장 provider + 커스텀 provider를 합쳐서 우선순위 정렬"""
+        result = []
+        # 내장 provider: 설정된 우선순위 순서
+        try:
+            builtin_order = db.get_builtin_provider_order()
+        except Exception:
+            builtin_order = ["gemini", "openai", "anthropic"]
+
+        for name in builtin_order:
+            has_key = bool(self._text_api_key(name))
+            result.append({"name": name, "type": name, "has_key": has_key, "priority": 0, "is_builtin": True})
+
+        # 커스텀 provider
+        try:
+            customs = db.get_ai_providers(active_only=True)
+            for cp in customs:
+                result.append({
+                    "name": cp["name"],
+                    "type": "openai_compatible",
+                    "has_key": bool(cp.get("api_key")),
+                    "priority": cp.get("priority", 100),
+                    "is_builtin": False,
+                    "api_url": cp.get("api_url", ""),
+                    "api_key": cp.get("api_key", ""),
+                    "default_model": cp.get("default_model", ""),
+                    "id": cp["id"],
+                })
+        except Exception:
+            pass
+
+        # 정렬: 내장이 먼저, 같은 priority면 순서 유지
+        result.sort(key=lambda x: (0 if x["is_builtin"] else 1, x["priority"]))
+        return result
+
+    def _get_custom_api_key(self, name: str) -> str:
+        """커스텀 provider의 API 키 반환"""
+        provider = self._get_custom_provider(name)
+        return provider["api_key"] if provider else ""
+
+
+
+    async def _generate_text_openai_compatible(self, prompt: str, temperature: float, max_tokens: int, api_url: str, api_key: str, model_override: str = "") -> str:
+        """OpenAI 호환 API (Ollama, vLLM, Together, Groq 등) 호출"""
+        import httpx
+        url = f"{api_url.rstrip('/')}/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        payload = {
+            "model": model_override or "default",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                error_body = resp.text[:500]
+                raise Exception(f"OpenAI-compatible API error {resp.status_code}: {error_body}")
+            data = resp.json()
+            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+
+    async def _call_provider(self, provider: str, prompt: str, temperature: float, max_tokens: int, use_web_search: bool, model_override: str, custom_info: dict = None) -> str:
         """provider를 선택하여 텍스트를 생성합니다."""
+        if custom_info and custom_info.get("type") == "openai_compatible":
+            return await self._generate_text_openai_compatible(
+                prompt, temperature, max_tokens,
+                api_url=custom_info["api_url"],
+                api_key=custom_info["api_key"],
+                model_override=model_override or custom_info.get("default_model", ""),
+            )
         if provider == "openai":
             return await self._generate_text_openai(prompt, temperature, max_tokens, use_web_search, model_override)
         if provider == "anthropic":
             return await self._generate_text_anthropic(prompt, temperature, max_tokens, model_override)
         return await self._generate_text_gemini(prompt, temperature, max_tokens, use_web_search, model_override)
-            label = self._provider_label(provider)
-            raise Exception(f"{label} API 키가 설정되지 않았습니다. 설정 > 글쓰기 AI에서 API 키를 저장하거나 제공자를 Gemini로 변경하세요.")
-
-        try:
-            if provider == "openai":
-                return await self._generate_text_openai(prompt, temperature, max_tokens, use_web_search, model_override)
-            if provider == "anthropic":
-                return await self._generate_text_anthropic(prompt, temperature, max_tokens, model_override)
-        except Exception as e:
-            if not provider_override and provider != "gemini" and self._looks_like_auth_error(e) and self._text_api_key("gemini"):
-                print(f"[GeminiService] {self._provider_label(provider)} auth failed; falling back to Gemini. Error: {e}")
-                return await self._generate_text_gemini(prompt, temperature, max_tokens, use_web_search, model_override)
-            raise
-
-        return await self._generate_text_gemini(prompt, temperature, max_tokens, use_web_search, model_override)
-
     async def _generate_text_gemini(self, prompt: str, temperature: float, max_tokens: int, use_web_search: bool, model_override: str = "") -> str:
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -818,6 +910,13 @@ class GeminiService:
     @staticmethod
     def fallback_general_blog_trends(category: str = "General") -> List[dict]:
         normalized = (category or "General").lower()
+        fx_topics = [
+            ("달러/원 환율 전망: 외환 트레이더가 주목해야 할 3가지 시나리오", "환율 변동성이 클 때 검색 수요가 급증하는 핵심 FX 주제입니다."),
+            ("초보자도 따라하는 FX 마진거래 입문 완벽 가이드", "외환 거래 입문자의 검색 수요가 가장 높은 evergreen 주제입니다."),
+            ("메이저 통화쌍 분석: USD/EUR, GBP/USD, USD/JPY 핵심 포인트", "실전 트레이더들이 매일 검색하는 기술 분석 주제입니다."),
+            ("금리 차이가 환율에 미치는 영향과 캐리 트레이드 전략", "파운드 캐리 트레이드 등 금리 관련 외환 전략에 대한 관심이 높습니다."),
+            ("스왑 포인트로 수익 내는 FX 장기 투자법", "스왑 이자 수익을 노리는 개인 투자자들이 지속적으로 검색합니다."),
+        ]
         finance_topics = [
             ("AI 시대 최대 수혜 산업과 투자 관점 정리", "AI 확산과 금융/산업 수혜주 관심을 함께 다룰 수 있습니다."),
             ("금리 인하 기대감이 주식시장에 미치는 영향", "투자자들이 꾸준히 검색하는 거시경제 주제입니다."),
@@ -839,7 +938,9 @@ class GeminiService:
             ("하루 10분으로 생산성을 높이는 현실적인 방법", "실용형 글로 저장/공유 가능성이 있습니다."),
             ("지금 시작하기 좋은 온라인 부업 아이디어", "대중 검색 수요가 높은 evergreen 주제입니다."),
         ]
-        if "finance" in normalized or "경제" in normalized or "금융" in normalized:
+        if "fx" in normalized or "forex" in normalized or "trading" in normalized or "외환" in normalized or "환율" in normalized:
+            selected = fx_topics
+        elif "finance" in normalized or "경제" in normalized or "금융" in normalized:
             selected = finance_topics
         elif "it" in normalized or "tech" in normalized or "테크" in normalized or "웹서비스" in normalized:
             selected = it_topics
