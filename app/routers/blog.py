@@ -5,15 +5,8 @@ from typing import List, Optional
 from services.blog_service import blog_service
 from services.ai_quality_service import ai_quality_service
 from services.source_service import source_service
-from services.publish_utils import (
-    normalize_publish_result,
-    open_published_urls,
-    run_with_backoff,
-    validate_blog_post_payload,
-    validate_publish_html,
-)
+from services.publish_utils import open_published_urls, run_with_backoff
 from services.publish_workflow_service import BlogPostRequest, publish_workflow_service
-from services.social_publish_service import social_publish_service
 from config import config
 import database as db
 import httpx
