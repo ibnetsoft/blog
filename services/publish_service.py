@@ -57,6 +57,7 @@ class PublishService:
   }}
 ]
 """
+        prompt += "\n8. If a human or character is necessary, the English prompt must explicitly say: exactly one person, exactly two arms, exactly two hands, five fingers on each hand, no extra limbs, no duplicate hands, anatomically correct hands.\n"
         try:
             result_text = await gemini_service.generate_text(prompt, temperature=0.3)
             # JSON 파싱

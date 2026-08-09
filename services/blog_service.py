@@ -1668,6 +1668,7 @@ HTML TO TRANSLATE:
         {content[:3000]}
         """
         
+        prompt += "\n6. If a human or character is included, enforce: exactly one person, exactly two arms, exactly two hands, five fingers on each hand, no extra limbs, no duplicate hands, anatomically correct hands.\n"
         result = await gemini.generate_text(prompt, temperature=0.7)
         return result.strip()
 

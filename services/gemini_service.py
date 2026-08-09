@@ -21,6 +21,18 @@ from services.gemini_blog_content_service import GeminiBlogContentService
 
 
 class GeminiService:
+    HUMAN_SUBJECT_KEYWORDS = (
+        "person", "people", "human", "man", "woman", "boy", "girl", "adult", "child",
+        "character", "portrait", "face", "model", "student", "worker", "doctor",
+        "teacher", "family", "couple", "bride", "groom", "athlete", "singer", "actor"
+    )
+    ANATOMY_GUARDRAIL = (
+        " exactly one person, no extra people, exactly two arms, exactly two hands, "
+        "five fingers on each hand, anatomically correct hands, anatomically correct arms, "
+        "natural human proportions, no extra limbs, no duplicate arms, no duplicate hands, "
+        "no fused fingers, no distorted fingers, no cropped hands, hands fully visible"
+    )
+
     def __init__(self):
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
         self.blog_content_service = GeminiBlogContentService(
@@ -44,6 +56,22 @@ class GeminiService:
     def _provider_model_options(self, provider: str) -> List[str]:
         options = getattr(config, "AI_TEXT_MODEL_OPTIONS", {}).get(provider, [])
         return [item["id"] for item in options if item.get("id")]
+
+    @classmethod
+    def _mentions_human_subject(cls, prompt: str) -> bool:
+        normalized = str(prompt or "").lower()
+        return any(keyword in normalized for keyword in cls.HUMAN_SUBJECT_KEYWORDS)
+
+    @classmethod
+    def _apply_anatomy_guardrail(cls, prompt: str, no_human: bool) -> str:
+        prompt = str(prompt or "").strip()
+        if not prompt:
+            return prompt
+        if no_human or not cls._mentions_human_subject(prompt):
+            return prompt
+        if "exactly two arms" in prompt.lower():
+            return prompt
+        return f"{prompt.rstrip(' ,.')},{cls.ANATOMY_GUARDRAIL}"
 
     @staticmethod
     def _normalize_model_name(model: str) -> str:
@@ -461,6 +489,7 @@ class GeminiService:
         """이미지 생성 (Imagen 3 우선, 실패 시 Imagen 2로 폴백)"""
         
         # [나노바나나 2.0] 최신 이미지 모델 최우선 적용 및 사람 제외 규칙 강화
+        prompt = self._apply_anatomy_guardrail(prompt, no_human=no_human)
         models = [
             "gemini-3.1-flash-live-preview", # 사용자가 요청한 최신 모델
             "imagen-4.0-generate-001",
@@ -545,7 +574,7 @@ class GeminiService:
                 if not no_human:
                     # 인물이 허용된 경우: 사용자가 지시한 포즈와 해부학적 제약 문구 강제 추가
                     final_prompt += (
-                        ", full body visible, hands naturally resting at the sides, "
+                        ", upper-body or medium shot preferred, uncrossed arms, hands separated from the torso, "
                         "professional corporate photography style, looking at the camera, a natural pose, "
                         "correct anatomy, natural human body proportions, normal number of limbs"
                     )
